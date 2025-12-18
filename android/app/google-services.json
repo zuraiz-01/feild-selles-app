@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "942300350864",
+    "project_id": "feild-selles-app",
+    "storage_bucket": "feild-selles-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:942300350864:android:5b475c6a54d6ba12460b15",
+        "android_client_info": {
+          "package_name": "com.example.field_sales_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmpSL5ZRXHgph_TlGBeAefqkg56FdxOqY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
