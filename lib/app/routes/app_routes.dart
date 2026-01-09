@@ -3,6 +3,10 @@ abstract class AppRoutes {
   static const login = '/login';
 
   static const adminDashboard = '/admin/dashboard';
+  static const seedImport = '/admin/seed-import';
+  static const seedTsaList = '/seed/tsas';
+  static const seedTsaDetail = '/seed/tsa';
+  static const seedShopDetail = '/seed/shop';
   static const dsfHome = '/dsf/home';
   static const distributorDashboard = '/distributor/dashboard';
 }

@@ -18,32 +18,36 @@ class SplashController extends GetxController {
   }
 
   Future<void> bootstrap() async {
-    await _sessionService.loadFromDisk();
+    try {
+      await _sessionService.loadFromDisk();
 
-    final profile = await _loadSessionUseCase();
-    if (profile == null) {
+      final profile = await _loadSessionUseCase();
+      if (profile == null) {
+        Get.offAllNamed(AppRoutes.login);
+        return;
+      }
+
+      _sessionService.setProfile(
+        SessionUserProfile(
+          uid: profile.uid,
+          role: profile.role,
+          distributorId: profile.distributorId,
+        ),
+      );
+
+      switch (profile.role) {
+        case UserRole.admin:
+          Get.offAllNamed(AppRoutes.adminDashboard);
+          return;
+        case UserRole.dsf:
+          Get.offAllNamed(AppRoutes.dsfHome);
+          return;
+        case UserRole.distributor:
+          Get.offAllNamed(AppRoutes.distributorDashboard);
+          return;
+      }
+    } catch (_) {
       Get.offAllNamed(AppRoutes.login);
-      return;
-    }
-
-    _sessionService.setProfile(
-      SessionUserProfile(
-        uid: profile.uid,
-        role: profile.role,
-        distributorId: profile.distributorId,
-      ),
-    );
-
-    switch (profile.role) {
-      case UserRole.admin:
-        Get.offAllNamed(AppRoutes.adminDashboard);
-        return;
-      case UserRole.dsf:
-        Get.offAllNamed(AppRoutes.dsfHome);
-        return;
-      case UserRole.distributor:
-        Get.offAllNamed(AppRoutes.distributorDashboard);
-        return;
     }
   }
 }
