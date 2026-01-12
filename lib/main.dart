@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'app/bindings/initial_binding.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
+import 'firebase_options.dart';
 
 const bool _skipFirebase = bool.fromEnvironment(
   'SKIP_FIREBASE',
@@ -14,18 +15,22 @@ const bool _skipFirebase = bool.fromEnvironment(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!_skipFirebase) {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   }
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.skipFirebase = _skipFirebase});
+
+  final bool skipFirebase;
 
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    if (_skipFirebase) {
+    if (skipFirebase) {
       return MaterialApp(
         title: 'Field Sales App (Preview)',
         theme: ThemeData(

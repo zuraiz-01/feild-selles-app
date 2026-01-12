@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../../features/auth/presentation/bindings/auth_binding.dart';
 import '../../features/auth/presentation/bindings/splash_binding.dart';
+import '../../features/auth/presentation/pages/bootstrap_accounts_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/dashboard/presentation/pages/admin_dashboard_page.dart';
@@ -26,6 +27,10 @@ abstract class AppPages {
       name: AppRoutes.login,
       page: () => const LoginPage(),
       binding: AuthBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.bootstrapAccounts,
+      page: () => const BootstrapAccountsPage(),
     ),
     GetPage(
       name: AppRoutes.adminDashboard,

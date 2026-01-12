@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../controllers/auth_controller.dart';
+import '../../../../app/routes/app_routes.dart';
 
 class LoginPage extends GetView<AuthController> {
   const LoginPage({super.key});
 
   @override
   Widget build(BuildContext context) {
+    const String bootstrapSecret = String.fromEnvironment(
+      'BOOTSTRAP_SECRET',
+      defaultValue: '',
+    );
+    final bool showBootstrap = kDebugMode || bootstrapSecret.isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Login')),
       body: Padding(
@@ -51,6 +59,13 @@ class LoginPage extends GetView<AuthController> {
                       )
                     : const Text('Login'),
               ),
+              if (showBootstrap) ...[
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Get.toNamed(AppRoutes.bootstrapAccounts),
+                  child: const Text('Bootstrap accounts'),
+                ),
+              ],
             ],
           ),
         ),

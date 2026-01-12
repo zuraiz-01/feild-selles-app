@@ -1,4 +1,6 @@
 import 'package:get/get.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../core/models/user_role.dart';
@@ -17,6 +19,26 @@ class AuthController extends GetxController {
   final password = ''.obs;
   final isLoading = false.obs;
   final error = RxnString();
+
+  String _formatAuthError(FirebaseAuthException e) {
+    final message = e.message ?? '';
+    final combined = '${e.code} $message'.toLowerCase();
+    if (combined.contains('configuration_not_found') ||
+        combined.contains('configuration-not-found')) {
+      return [
+        'Firebase Auth configuration not found.',
+        'Fix:',
+        '1) Firebase Console → Authentication → Get started',
+        '2) Sign-in method → Email/Password ON (if using email login)',
+        '3) Project settings → Your apps: confirm Android package name matches',
+        '4) Rebuild: flutter clean → flutter pub get → flutter run',
+      ].join('\n');
+    }
+    return [
+      'FirebaseAuthException: ${e.code}',
+      if (message.isNotEmpty) message,
+    ].join('\n');
+  }
 
   Future<void> login() async {
     final emailValue = email.value.trim();
@@ -52,8 +74,14 @@ class AuthController extends GetxController {
           Get.offAllNamed(AppRoutes.distributorDashboard);
           return;
       }
-    } catch (e) {
+    } on FirebaseAuthException catch (e, st) {
+      error.value = _formatAuthError(e);
+      debugPrint(error.value);
+      debugPrintStack(stackTrace: st);
+    } catch (e, st) {
       error.value = e.toString();
+      debugPrint(error.value);
+      debugPrintStack(stackTrace: st);
     } finally {
       isLoading.value = false;
     }

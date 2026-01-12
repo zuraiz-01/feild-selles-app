@@ -1,6 +1,7 @@
 abstract class AppRoutes {
   static const splash = '/';
   static const login = '/login';
+  static const bootstrapAccounts = '/bootstrap/accounts';
 
   static const adminDashboard = '/admin/dashboard';
   static const seedImport = '/admin/seed-import';
