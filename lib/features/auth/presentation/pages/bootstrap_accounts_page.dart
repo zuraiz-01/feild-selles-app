@@ -7,6 +7,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_theme.dart';
 import '../../../../core/models/user_role.dart';
 import '../../../../firebase_options.dart';
 
@@ -30,9 +32,14 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
   final _dsfEmail = TextEditingController(text: 'dsf@field.local');
   final _dsfPassword = TextEditingController(text: 'Dsf@12345');
   final _dsfDistributorId = TextEditingController();
+  final _dsfOfficeLat = TextEditingController();
+  final _dsfOfficeLng = TextEditingController();
+  final _dsfOfficeRadius = TextEditingController(text: '250');
 
   bool _isLoading = false;
   String? _status;
+  bool _showAdminPassword = false;
+  bool _showDsfPassword = false;
 
   bool get _enabled => kDebugMode || _bootstrapSecret.isNotEmpty;
 
@@ -44,6 +51,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
     _dsfEmail.dispose();
     _dsfPassword.dispose();
     _dsfDistributorId.dispose();
+    _dsfOfficeLat.dispose();
+    _dsfOfficeLng.dispose();
+    _dsfOfficeRadius.dispose();
     super.dispose();
   }
 
@@ -62,6 +72,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
     required String email,
     required String password,
     required String distributorId,
+    double? officeLat,
+    double? officeLng,
+    double? officeRadiusMeters,
   }) async {
     setState(() {
       _isLoading = true;
@@ -75,6 +88,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
           email: email,
           password: password,
           distributorId: distributorId,
+          officeLat: officeLat,
+          officeLng: officeLng,
+          officeRadiusMeters: officeRadiusMeters,
         );
         return;
       }
@@ -102,6 +118,15 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
           'createdAt': FieldValue.serverTimestamp(),
           'email': email.trim(),
         });
+      } else if (role == UserRole.dsf) {
+        await _ensureDistributorDoc(
+          firestore: firestore,
+          distributorId: distributorId.trim(),
+          name: email.trim(),
+          officeLat: officeLat,
+          officeLng: officeLng,
+          officeRadiusMeters: officeRadiusMeters,
+        );
       }
 
       setState(() {
@@ -132,6 +157,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
     required String email,
     required String password,
     required String distributorId,
+    double? officeLat,
+    double? officeLng,
+    double? officeRadiusMeters,
   }) async {
     final options = DefaultFirebaseOptions.currentPlatform;
     final projectId = options.projectId;
@@ -275,6 +303,16 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
         if (adminRes.statusCode < 200 || adminRes.statusCode >= 300) {
           throw StateError('REST write adminUids/$uid failed: ${adminRes.body}');
         }
+      } else if (role == UserRole.dsf) {
+        await _ensureDistributorDocViaRest(
+          idToken: idToken,
+          distributorId: trimmedDistributorId,
+          name: trimmedEmail,
+          officeLat: officeLat,
+          officeLng: officeLng,
+          officeRadiusMeters: officeRadiusMeters,
+          projectId: projectId,
+        );
       }
 
       setState(() {
@@ -287,6 +325,75 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
             'If this is a network error, try switching network/VPN and retry.\n'
             'If Firestore write is denied, relax rules or run on an authenticated admin account.';
       });
+    }
+  }
+
+  Future<void> _ensureDistributorDoc({
+    required FirebaseFirestore firestore,
+    required String distributorId,
+    required String name,
+    double? officeLat,
+    double? officeLng,
+    double? officeRadiusMeters,
+  }) async {
+    if (officeLat == null || officeLng == null || officeRadiusMeters == null) {
+      throw StateError('Office geofence (lat/lng/radius) is required.');
+    }
+    await firestore.collection('distributors').doc(distributorId).set({
+      'name': name,
+      'distributorId': distributorId,
+      'officeGeofence': {
+        'center': {'lat': officeLat, 'lng': officeLng},
+        'radiusMeters': officeRadiusMeters,
+      },
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _ensureDistributorDocViaRest({
+    required String idToken,
+    required String distributorId,
+    required String name,
+    required double? officeLat,
+    required double? officeLng,
+    required double? officeRadiusMeters,
+    required String projectId,
+  }) async {
+    if (officeLat == null || officeLng == null || officeRadiusMeters == null) {
+      throw StateError('Office geofence (lat/lng/radius) is required.');
+    }
+    final uri = Uri.parse(
+      'https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/distributors/$distributorId',
+    );
+    final res = await http.patch(
+      uri,
+      headers: <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $idToken',
+      },
+      body: jsonEncode({
+        'fields': {
+          'name': {'stringValue': name},
+          'distributorId': {'stringValue': distributorId},
+          'officeGeofence': {
+            'mapValue': {
+              'fields': {
+                'center': {
+                  'mapValue': {
+                    'fields': {
+                      'lat': {'doubleValue': officeLat},
+                      'lng': {'doubleValue': officeLng},
+                    },
+                  },
+                },
+                'radiusMeters': {'doubleValue': officeRadiusMeters},
+              },
+            },
+          },
+        },
+      }),
+    );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw StateError('REST write distributors/$distributorId failed: ${res.body}');
     }
   }
 
@@ -306,119 +413,210 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Bootstrap Accounts')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text(
-            'Creates Firebase Auth users and writes:\n- users/{uid}: {role, distributorId}\n- adminUids/{uid} (admins only)',
-          ),
-          if (defaultTargetPlatform == TargetPlatform.android) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'Note: On some Android emulators, email/password sign-up may fail due to reCAPTCHA config.\nThis screen auto-falls back to a REST bootstrap when needed.',
-              style: TextStyle(fontSize: 12),
+      body: AppShell(
+        child: ListView(
+          children: [
+            const SectionTitle(
+              title: 'Bootstrap accounts',
+              subtitle:
+                  'Creates Auth users + profile documents for Admin and DSF roles.',
             ),
-          ],
-          const SizedBox(height: 16),
-          _sectionTitle('Admin'),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminEmail,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Admin email',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminPassword,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: 'Admin password',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminDistributorId,
-            decoration: const InputDecoration(
-              labelText: 'Admin distributorId (any string)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _isLoading
-                ? null
-                : () => _createAccount(
-                      role: UserRole.admin,
-                      email: _adminEmail.text,
-                      password: _adminPassword.text,
-                      distributorId: _adminDistributorId.text,
+            const SizedBox(height: 12),
+            if (defaultTargetPlatform == TargetPlatform.android) ...[
+              GlassCard(
+                padding: const EdgeInsets.all(16),
+                child: const Text(
+                  'Note: On some Android emulators, email/password sign-up may fail due to reCAPTCHA config.\nThis screen auto-falls back to a REST bootstrap when needed.',
+                  style: TextStyle(fontSize: 12, color: AppTheme.mutedInk),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('Admin'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _adminEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Admin email',
+                      prefixIcon: Icon(Icons.alternate_email),
                     ),
-            child: const Text('Create Admin'),
-          ),
-          const SizedBox(height: 16),
-          _sectionTitle('DSF'),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _dsfEmail,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'DSF email',
-              border: OutlineInputBorder(),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _adminPassword,
+                    obscureText: !_showAdminPassword,
+                    decoration: InputDecoration(
+                      labelText: 'Admin password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _showAdminPassword = !_showAdminPassword;
+                          });
+                        },
+                        icon: Icon(
+                          _showAdminPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _adminDistributorId,
+                    decoration: const InputDecoration(
+                      labelText: 'Admin distributorId (any string)',
+                      prefixIcon: Icon(Icons.tag),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _isLoading
+                        ? null
+                        : () => _createAccount(
+                              role: UserRole.admin,
+                              email: _adminEmail.text,
+                              password: _adminPassword.text,
+                              distributorId: _adminDistributorId.text,
+                            ),
+                    child: const Text('Create Admin'),
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _dsfPassword,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: 'DSF password',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _dsfDistributorId,
-            decoration: const InputDecoration(
-              labelText: 'DSF distributorId (must exist in Firestore)',
-              border: OutlineInputBorder(),
-              hintText: 'e.g. distributor_karachi_01',
-            ),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _isLoading
-                ? null
-                : () {
-                    if (_dsfDistributorId.text.trim().isEmpty) {
-                      setState(() {
-                        _status =
-                            'DSF distributorId is required (must match a document id in `distributors`).';
-                      });
-                      return;
-                    }
-                    _createAccount(
-                      role: UserRole.dsf,
-                      email: _dsfEmail.text,
-                      password: _dsfPassword.text,
-                      distributorId: _dsfDistributorId.text,
-                    );
-                  },
-            child: const Text('Create DSF'),
-          ),
-          const SizedBox(height: 16),
-          if (_isLoading) ...[
-            const Center(child: CircularProgressIndicator()),
             const SizedBox(height: 16),
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _sectionTitle('DSF'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _dsfEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'DSF email',
+                      prefixIcon: Icon(Icons.alternate_email),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _dsfPassword,
+                    obscureText: !_showDsfPassword,
+                    decoration: InputDecoration(
+                      labelText: 'DSF password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _showDsfPassword = !_showDsfPassword;
+                          });
+                        },
+                        icon: Icon(
+                          _showDsfPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _dsfDistributorId,
+                    decoration: const InputDecoration(
+                      labelText: 'DSF distributorId (must exist in Firestore)',
+                      hintText: 'e.g. distributor_karachi_01',
+                      prefixIcon: Icon(Icons.map_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _dsfOfficeLat,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Office latitude',
+                      prefixIcon: Icon(Icons.my_location),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _dsfOfficeLng,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Office longitude',
+                      prefixIcon: Icon(Icons.my_location),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _dsfOfficeRadius,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Office radius (meters)',
+                      prefixIcon: Icon(Icons.circle_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            if (_dsfDistributorId.text.trim().isEmpty) {
+                              setState(() {
+                                _status =
+                                    'DSF distributorId is required (must match a document id in `distributors`).';
+                              });
+                              return;
+                            }
+                            final officeLat =
+                                double.tryParse(_dsfOfficeLat.text.trim());
+                            final officeLng =
+                                double.tryParse(_dsfOfficeLng.text.trim());
+                            final officeRadius =
+                                double.tryParse(_dsfOfficeRadius.text.trim());
+                            if (officeLat == null ||
+                                officeLng == null ||
+                                officeRadius == null) {
+                              setState(() {
+                                _status =
+                                    'Office geofence (lat/lng/radius) is required.';
+                              });
+                              return;
+                            }
+                            _createAccount(
+                              role: UserRole.dsf,
+                              email: _dsfEmail.text,
+                              password: _dsfPassword.text,
+                              distributorId: _dsfDistributorId.text,
+                              officeLat: officeLat,
+                              officeLng: officeLng,
+                              officeRadiusMeters: officeRadius,
+                            );
+                          },
+                    child: const Text('Create DSF'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_isLoading) ...[
+              const Center(child: CircularProgressIndicator()),
+              const SizedBox(height: 16),
+            ],
+            if (_status != null) ...[
+              GlassCard(
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(_status!),
+              ),
+            ],
           ],
-          if (_status != null) ...[
-            const Divider(),
-            SelectableText(_status!),
-          ],
-        ],
+        ),
       ),
     );
   }

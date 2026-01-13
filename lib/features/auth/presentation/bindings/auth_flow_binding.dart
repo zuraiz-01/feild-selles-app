@@ -18,17 +18,22 @@ import '../controllers/splash_controller.dart';
 class AuthFlowBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut<AuthRemoteDataSource>(
+    void putLazyIfMissing<T>(T Function() builder) {
+      if (Get.isRegistered<T>()) return;
+      Get.lazyPut<T>(builder, fenix: true);
+    }
+
+    putLazyIfMissing<AuthRemoteDataSource>(
       () => AuthRemoteDataSource(FirebaseAuth.instance),
     );
-    Get.lazyPut<UserProfileRemoteDataSource>(
+    putLazyIfMissing<UserProfileRemoteDataSource>(
       () => UserProfileRemoteDataSource(FirebaseFirestore.instance),
     );
-    Get.lazyPut<DistributorsRemoteDataSource>(
-      () => DistributorsRemoteDataSource(FirebaseFirestore.instance),
-    );
+    if (!Get.isRegistered<DistributorsRemoteDataSource>()) {
+      Get.put(DistributorsRemoteDataSource(FirebaseFirestore.instance));
+    }
 
-    Get.lazyPut<AuthRepositoryImpl>(
+    putLazyIfMissing<AuthRepositoryImpl>(
       () => AuthRepositoryImpl(
         Get.find<AuthRemoteDataSource>(),
         Get.find<UserProfileRemoteDataSource>(),
@@ -39,17 +44,17 @@ class AuthFlowBinding extends Bindings {
       ),
     );
 
-    Get.lazyPut<LoginUseCase>(
+    putLazyIfMissing<LoginUseCase>(
       () => LoginUseCase(Get.find<AuthRepositoryImpl>()),
     );
-    Get.lazyPut<LoadSessionUseCase>(
+    putLazyIfMissing<LoadSessionUseCase>(
       () => LoadSessionUseCase(Get.find<AuthRepositoryImpl>()),
     );
-    Get.lazyPut<LogoutUseCase>(
+    putLazyIfMissing<LogoutUseCase>(
       () => LogoutUseCase(Get.find<AuthRepositoryImpl>()),
     );
 
-    Get.lazyPut<AuthController>(
+    putLazyIfMissing<AuthController>(
       () => AuthController(
         Get.find<SessionService>(),
         Get.find<LoginUseCase>(),
@@ -57,7 +62,7 @@ class AuthFlowBinding extends Bindings {
       ),
     );
 
-    Get.lazyPut<SplashController>(
+    putLazyIfMissing<SplashController>(
       () => SplashController(
         Get.find<SessionService>(),
         Get.find<LoadSessionUseCase>(),

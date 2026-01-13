@@ -62,11 +62,11 @@ class StartDutyUseCase {
       startLng: pos.longitude,
     );
 
+    final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
     await _session.setActiveDutyId(dutyId);
+    await _session.setActiveDutyDateKey(dateKey);
 
     await _tracking.start(dutyId: dutyId);
-
-    final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
     return StartDutyResult(dutyId: dutyId, dateKey: dateKey);
   }
 }

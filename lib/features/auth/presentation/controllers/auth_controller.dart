@@ -20,6 +20,34 @@ class AuthController extends GetxController {
   final isLoading = false.obs;
   final error = RxnString();
 
+  bool _showAuthPopup(FirebaseAuthException e) {
+    final code = e.code.toLowerCase();
+    String? message;
+    if (code == 'invalid-credential' ||
+        code == 'wrong-password' ||
+        code == 'user-not-found') {
+      message = 'Invalid email or password.';
+    } else if (code == 'invalid-email') {
+      message = 'Invalid email address.';
+    }
+    if (message == null) return false;
+    Get.snackbar(
+      'Login failed',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+    return true;
+  }
+
+  void _showGenericPopup(String message) {
+    if (message.trim().isEmpty) return;
+    Get.snackbar(
+      'Login failed',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
   String _formatAuthError(FirebaseAuthException e) {
     final message = e.message ?? '';
     final combined = '${e.code} $message'.toLowerCase();
@@ -76,10 +104,14 @@ class AuthController extends GetxController {
       }
     } on FirebaseAuthException catch (e, st) {
       error.value = _formatAuthError(e);
+      if (!_showAuthPopup(e)) {
+        _showGenericPopup(e.message ?? 'Login failed.');
+      }
       debugPrint(error.value);
       debugPrintStack(stackTrace: st);
     } catch (e, st) {
       error.value = e.toString();
+      _showGenericPopup('Login failed.');
       debugPrint(error.value);
       debugPrintStack(stackTrace: st);
     } finally {

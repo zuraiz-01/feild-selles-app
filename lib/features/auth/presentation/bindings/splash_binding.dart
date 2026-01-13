@@ -9,22 +9,30 @@ import '../../data/datasources/auth_remote_ds.dart';
 import '../../data/datasources/user_profile_remote_ds.dart';
 import '../../data/repositories/auth_repository_impl.dart';
 import '../../domain/usecases/load_session_usecase.dart';
+import '../../domain/usecases/login_usecase.dart';
+import '../../domain/usecases/logout_usecase.dart';
+import '../controllers/auth_controller.dart';
 import '../controllers/splash_controller.dart';
 
 class SplashBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut<AuthRemoteDataSource>(
+    void putLazyIfMissing<T>(T Function() builder) {
+      if (Get.isRegistered<T>()) return;
+      Get.lazyPut<T>(builder, fenix: true);
+    }
+
+    putLazyIfMissing<AuthRemoteDataSource>(
       () => AuthRemoteDataSource(FirebaseAuth.instance),
     );
-    Get.lazyPut<UserProfileRemoteDataSource>(
+    putLazyIfMissing<UserProfileRemoteDataSource>(
       () => UserProfileRemoteDataSource(FirebaseFirestore.instance),
     );
-    Get.lazyPut<DistributorsRemoteDataSource>(
-      () => DistributorsRemoteDataSource(FirebaseFirestore.instance),
-    );
+    if (!Get.isRegistered<DistributorsRemoteDataSource>()) {
+      Get.put(DistributorsRemoteDataSource(FirebaseFirestore.instance));
+    }
 
-    Get.lazyPut<AuthRepositoryImpl>(
+    putLazyIfMissing<AuthRepositoryImpl>(
       () => AuthRepositoryImpl(
         Get.find<AuthRemoteDataSource>(),
         Get.find<UserProfileRemoteDataSource>(),
@@ -35,11 +43,25 @@ class SplashBinding extends Bindings {
       ),
     );
 
-    Get.lazyPut<LoadSessionUseCase>(
+    putLazyIfMissing<LoadSessionUseCase>(
       () => LoadSessionUseCase(Get.find<AuthRepositoryImpl>()),
     );
+    putLazyIfMissing<LoginUseCase>(
+      () => LoginUseCase(Get.find<AuthRepositoryImpl>()),
+    );
+    putLazyIfMissing<LogoutUseCase>(
+      () => LogoutUseCase(Get.find<AuthRepositoryImpl>()),
+    );
 
-    Get.lazyPut<SplashController>(
+    putLazyIfMissing<AuthController>(
+      () => AuthController(
+        Get.find<SessionService>(),
+        Get.find<LoginUseCase>(),
+        Get.find<LogoutUseCase>(),
+      ),
+    );
+
+    putLazyIfMissing<SplashController>(
       () => SplashController(
         Get.find<SessionService>(),
         Get.find<LoadSessionUseCase>(),

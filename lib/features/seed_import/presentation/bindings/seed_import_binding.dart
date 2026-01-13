@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:get/get.dart';
 
+import '../../data/dsf_account_service.dart';
 import '../../data/excel_seed_parser.dart';
 import '../../data/seed_firestore_writer.dart';
 import '../controllers/seed_import_controller.dart';
@@ -12,12 +13,15 @@ class SeedImportBinding extends Bindings {
     Get.lazyPut<SeedFirestoreWriter>(
       () => SeedFirestoreWriter(FirebaseFirestore.instance),
     );
+    Get.lazyPut<DsfAccountService>(
+      () => DsfAccountService(FirebaseFirestore.instance),
+    );
     Get.lazyPut<SeedImportController>(
       () => SeedImportController(
         Get.find<ExcelSeedParser>(),
         Get.find<SeedFirestoreWriter>(),
+        Get.find<DsfAccountService>(),
       ),
     );
   }
 }
-

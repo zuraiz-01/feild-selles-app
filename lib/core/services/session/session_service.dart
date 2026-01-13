@@ -16,18 +16,22 @@ class SessionUserProfile {
 
 class SessionService {
   static const _kActiveDutyId = 'activeDutyId';
+  static const _kActiveDutyDateKey = 'activeDutyDateKey';
 
   SessionUserProfile? _profile;
   String? _activeDutyId;
+  String? _activeDutyDateKey;
 
   SessionUserProfile? get profile => _profile;
   String? get activeDutyId => _activeDutyId;
+  String? get activeDutyDateKey => _activeDutyDateKey;
 
   bool get isLoggedIn => _profile != null;
 
   Future<void> loadFromDisk() async {
     final prefs = await SharedPreferences.getInstance();
     _activeDutyId = prefs.getString(_kActiveDutyId);
+    _activeDutyDateKey = prefs.getString(_kActiveDutyDateKey);
   }
 
   Future<void> setActiveDutyId(String? dutyId) async {
@@ -40,6 +44,16 @@ class SessionService {
     }
   }
 
+  Future<void> setActiveDutyDateKey(String? dateKey) async {
+    _activeDutyDateKey = dateKey;
+    final prefs = await SharedPreferences.getInstance();
+    if (dateKey == null) {
+      await prefs.remove(_kActiveDutyDateKey);
+    } else {
+      await prefs.setString(_kActiveDutyDateKey, dateKey);
+    }
+  }
+
   void setProfile(SessionUserProfile? profile) {
     _profile = profile;
   }
@@ -47,5 +61,6 @@ class SessionService {
   Future<void> clear() async {
     _profile = null;
     await setActiveDutyId(null);
+    await setActiveDutyDateKey(null);
   }
 }

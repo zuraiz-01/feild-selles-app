@@ -56,5 +56,6 @@ class EndDutyUseCase {
     );
 
     await _session.setActiveDutyId(null);
+    await _session.setActiveDutyDateKey(null);
   }
 }

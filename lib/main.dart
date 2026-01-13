@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'app/bindings/initial_binding.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
+import 'app/ui/app_theme.dart';
 import 'firebase_options.dart';
 
 const bool _skipFirebase = bool.fromEnvironment(
@@ -31,12 +32,11 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (skipFirebase) {
-      return MaterialApp(
+      return GetMaterialApp(
         title: 'Field Sales App (Preview)',
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-          useMaterial3: true,
-        ),
+        theme: AppTheme.buildTheme(),
+        initialBinding: InitialBinding(),
+        debugShowCheckedModeBanner: false,
         home: const Scaffold(
           body: Center(
             child: Text(
@@ -50,10 +50,7 @@ class MyApp extends StatelessWidget {
 
     return GetMaterialApp(
       title: 'Field Sales App',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.buildTheme(),
       initialBinding: InitialBinding(),
       initialRoute: AppRoutes.splash,
       getPages: AppPages.pages,
