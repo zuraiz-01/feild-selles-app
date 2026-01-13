@@ -42,4 +42,14 @@ class DutyRemoteDataSource {
     }
     return {'id': doc.id, ...data};
   }
+
+  Future<List<Map<String, dynamic>>> getShopVisits(String dutyId) async {
+    final snap = await _firestore
+        .collection('duties')
+        .doc(dutyId)
+        .collection('shopVisits')
+        .orderBy('submittedAt', descending: false)
+        .get();
+    return snap.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+  }
 }

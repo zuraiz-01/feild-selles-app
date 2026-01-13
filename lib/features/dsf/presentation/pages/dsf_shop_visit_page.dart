@@ -144,6 +144,8 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     required String shopId,
     required String shopTitle,
     required double? distanceMeters,
+    required bool filer,
+    required double discountPct,
   }) async {
     final stock = double.tryParse(_stockController.text.trim());
     final payment = double.tryParse(_paymentController.text.trim());
@@ -193,6 +195,8 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         'notes': _notesController.text.trim(),
         'visitStartedAt': _visitStartedAt?.toIso8601String(),
         'submittedAt': now,
+        'filer': filer,
+        'discountPct': discountPct,
         if (distanceMeters != null) 'distanceMeters': distanceMeters,
         if (pos != null)
           'submittedLocation': {'lat': pos.latitude, 'lng': pos.longitude},
@@ -229,15 +233,17 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         body: Center(child: Text('No active duty. Start duty first.')),
       );
     }
-    if (tsaId.isEmpty || shopId.isEmpty) {
+    if (shopId.isEmpty) {
       return const Scaffold(body: Center(child: Text('Missing shop info.')));
     }
 
-    final shopRef = FirebaseFirestore.instance
-        .collection('seedTsas')
-        .doc(tsaId)
-        .collection('shops')
-        .doc(shopId);
+    final shopRef = tsaId.isNotEmpty
+        ? FirebaseFirestore.instance
+            .collection('seedTsas')
+            .doc(tsaId)
+            .collection('shops')
+            .doc(shopId)
+        : FirebaseFirestore.instance.collection('shops').doc(shopId);
 
     return Scaffold(
       appBar: AppBar(title: Text(shopTitle)),
@@ -252,6 +258,9 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
               return const Center(child: CircularProgressIndicator());
             }
             final shopData = snapshot.data!.data();
+            final filer = (shopData?['filer'] as bool?) ?? false;
+            final discountPct =
+                (shopData?['discountPct'] as num?)?.toDouble() ?? (filer ? 0.05 : 0.025);
             final distanceMeters = _distanceToShopMeters(shopData);
             _maybeStartTimer(distanceMeters);
 
@@ -267,13 +276,18 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
               children: [
                 GlassCard(
                   padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          filer ? 'Filer shop (5% discount)' : 'Non-filer (2.5% discount)',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       const SizedBox(height: 8),
                       if (!hasLocation)
                         const Text(
@@ -381,6 +395,8 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                                       shopId: shopId,
                                       shopTitle: shopTitle,
                                       distanceMeters: distanceMeters,
+                                      filer: filer,
+                                      discountPct: discountPct,
                                     )
                                   : null,
                               child: _isSaving

@@ -10,19 +10,51 @@ class ExcelExportResult {
   const ExcelExportResult({required this.filePath, required this.sizeBytes});
 }
 
+class ExcelSheet {
+  final String name;
+  final List<String> headers;
+  final List<List<dynamic>> rows;
+
+  const ExcelSheet({
+    required this.name,
+    required this.headers,
+    required this.rows,
+  });
+}
+
 class ExcelExporter {
   Future<ExcelExportResult> export({
     required String fileName,
     required List<String> headers,
     required List<List<dynamic>> rows,
     String sheetName = 'DATA',
+  }) {
+    return exportWorkbook(
+      fileName: fileName,
+      sheets: [
+        ExcelSheet(name: sheetName, headers: headers, rows: rows),
+      ],
+    );
+  }
+
+  Future<ExcelExportResult> exportWorkbook({
+    required String fileName,
+    required List<ExcelSheet> sheets,
   }) async {
     final excel = Excel.createExcel();
-    final Sheet sheet = excel[sheetName];
 
-    sheet.appendRow(headers.map(_cell).toList());
-    for (final row in rows) {
-      sheet.appendRow(row.map(_cell).toList());
+    for (final data in sheets) {
+      final Sheet sheet = excel[data.name];
+      sheet.appendRow(data.headers.map(_cell).toList());
+      for (final row in data.rows) {
+        sheet.appendRow(row.map(_cell).toList());
+      }
+    }
+
+    // Drop the default sheet if unused to avoid an empty tab.
+    if (sheets.where((s) => s.name == 'Sheet1').isEmpty &&
+        excel.sheets.containsKey('Sheet1')) {
+      excel.delete('Sheet1');
     }
 
     final bytes = excel.encode();
@@ -60,11 +92,7 @@ class ExcelExporter {
       return BoolCellValue(value);
     }
     if (value is DateTime) {
-      return DateCellValue(
-        year: value.year,
-        month: value.month,
-        day: value.day,
-      );
+      return TextCellValue(value.toIso8601String());
     }
     return TextCellValue(value.toString());
   }

@@ -43,6 +43,7 @@ class DutyBinding extends Bindings {
         Get.find<LocationService>(),
         Get.find<TrackingRemoteDataSource>(),
         Get.find<SessionService>(),
+        FirebaseFirestore.instance,
       ),
       permanent: true,
     );

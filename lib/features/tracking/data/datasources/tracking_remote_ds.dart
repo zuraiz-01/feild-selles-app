@@ -55,4 +55,26 @@ class TrackingRemoteDataSource {
       'endedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
   }
+
+  Future<void> addGeofenceAlert({
+    required String dutyId,
+    required String dsfId,
+    required String distributorId,
+    required double lat,
+    required double lng,
+    required double distanceMeters,
+  }) async {
+    final now = FieldValue.serverTimestamp();
+    await _firestore.collection('alerts').add({
+      'type': 'out_of_geofence',
+      'dutyId': dutyId,
+      'dsfId': dsfId,
+      'distributorId': distributorId,
+      'lat': lat,
+      'lng': lng,
+      'distanceMeters': distanceMeters,
+      'createdAt': now,
+      'resolved': false,
+    });
+  }
 }

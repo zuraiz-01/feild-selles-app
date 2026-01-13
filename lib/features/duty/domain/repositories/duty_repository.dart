@@ -1,4 +1,5 @@
 import '../entities/duty_session.dart';
+import '../entities/duty_shop_visit.dart';
 
 abstract class DutyRepository {
   Future<String> startDuty({
@@ -15,4 +16,6 @@ abstract class DutyRepository {
   });
 
   Future<DutySession> getDuty(String dutyId);
+
+  Future<List<DutyShopVisit>> getShopVisits(String dutyId);
 }

@@ -6,6 +6,11 @@ import '../../features/auth/presentation/pages/bootstrap_accounts_page.dart';
 import '../../features/auth/presentation/pages/login_page.dart';
 import '../../features/auth/presentation/pages/splash_page.dart';
 import '../../features/dashboard/presentation/pages/admin_dashboard_page.dart';
+import '../../features/dashboard/presentation/pages/admin_dsfs_page.dart';
+import '../../features/dashboard/presentation/pages/admin_shops_page.dart';
+import '../../features/dashboard/presentation/pages/admin_products_page.dart';
+import '../../features/dashboard/presentation/pages/admin_map_page.dart';
+import '../../features/dashboard/presentation/pages/admin_seed_sample_page.dart';
 import '../../features/dashboard/presentation/pages/distributor_dashboard_page.dart';
 import '../../features/dsf/presentation/pages/dsf_home_page.dart';
 import '../../features/dsf/presentation/pages/shops_to_visit_page.dart';
@@ -39,6 +44,26 @@ abstract class AppPages {
     GetPage(
       name: AppRoutes.adminDashboard,
       page: () => const AdminDashboardPage(),
+    ),
+    GetPage(
+      name: AppRoutes.adminDsfs,
+      page: () => const AdminDsfsPage(),
+    ),
+    GetPage(
+      name: AppRoutes.adminShops,
+      page: () => const AdminShopsPage(),
+    ),
+    GetPage(
+      name: AppRoutes.adminProducts,
+      page: () => const AdminProductsPage(),
+    ),
+    GetPage(
+      name: AppRoutes.adminMap,
+      page: () => const AdminMapPage(),
+    ),
+    GetPage(
+      name: AppRoutes.adminSeedSample,
+      page: () => const AdminSeedSamplePage(),
     ),
     GetPage(
       name: AppRoutes.seedImport,

@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:async';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../utils/geo_utils.dart';
 import 'location_service.dart';
 import '../session/session_service.dart';
 import '../../../features/tracking/data/datasources/tracking_remote_ds.dart';
@@ -14,14 +16,18 @@ class BackgroundTrackingService {
   final LocationService _locationService;
   final TrackingRemoteDataSource _remote;
   final SessionService _sessionService;
+  final FirebaseFirestore _firestore;
 
   StreamSubscription<Position>? _sub;
   bool _running = false;
+  _GeofenceConfig? _geofence;
+  DateTime? _lastAlertUtc;
 
   BackgroundTrackingService(
     this._locationService,
     this._remote,
     this._sessionService,
+    this._firestore,
   );
 
   bool get isRunning => _running;
@@ -34,6 +40,7 @@ class BackgroundTrackingService {
       throw StateError('Cannot start tracking: no session');
     }
 
+    _geofence = await _loadGeofence(uid: profile.uid);
     _running = true;
 
     _sub =
@@ -146,6 +153,84 @@ class BackgroundTrackingService {
 
     try {
       await flushQueue(dutyId: dutyId);
+      await _maybeTriggerGeofenceAlert(
+        dutyId: dutyId,
+        dsfId: dsfId,
+        distributorId: distributorId,
+        lat: lat,
+        lng: lng,
+      );
     } catch (_) {}
   }
+
+  Future<_GeofenceConfig?> _loadGeofence({required String uid}) async {
+    final snap = await _firestore
+        .collection('dsfAccounts')
+        .where('uid', isEqualTo: uid)
+        .limit(1)
+        .get();
+    if (snap.docs.isEmpty) return null;
+    final data = snap.docs.first.data();
+    final geo = data['geofence'];
+    if (geo is! Map) return null;
+    final center = geo['center'];
+    final radius = geo['radiusMeters'];
+    if (center is! Map || radius is! num) return null;
+    final lat = center['lat'];
+    final lng = center['lng'];
+    if (lat is! num || lng is! num) return null;
+    return _GeofenceConfig(
+      centerLat: lat.toDouble(),
+      centerLng: lng.toDouble(),
+      radiusMeters: radius.toDouble(),
+    );
+  }
+
+  Future<void> _maybeTriggerGeofenceAlert({
+    required String dutyId,
+    required String dsfId,
+    required String distributorId,
+    required double lat,
+    required double lng,
+  }) async {
+    final fence = _geofence;
+    if (fence == null) return;
+
+    final distance = GeoUtils.distanceMeters(
+      lat1: lat,
+      lng1: lng,
+      lat2: fence.centerLat,
+      lng2: fence.centerLng,
+    );
+    final outside = distance > fence.radiusMeters;
+    if (!outside) return;
+
+    final now = DateTime.now().toUtc();
+    if (_lastAlertUtc != null &&
+        now.difference(_lastAlertUtc!).inMinutes < 3) {
+      return;
+    }
+    _lastAlertUtc = now;
+
+    await _remote.addGeofenceAlert(
+      dutyId: dutyId,
+      dsfId: dsfId,
+      distributorId: distributorId,
+      lat: lat,
+      lng: lng,
+      distanceMeters: distance,
+    );
+  }
+}
+
+class _GeofenceConfig {
+  final double centerLat;
+  final double centerLng;
+  final double radiusMeters;
+
+  const _GeofenceConfig({
+    required this.centerLat,
+    required this.centerLng,
+    required this.radiusMeters,
+  });
 }
