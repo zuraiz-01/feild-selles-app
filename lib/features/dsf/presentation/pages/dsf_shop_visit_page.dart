@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:get/get.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../../core/services/session/session_service.dart';
@@ -17,12 +20,17 @@ class DsfShopVisitPage extends StatefulWidget {
 }
 
 class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
-  static const Duration _minVisitDuration = Duration(minutes: 10);
-  static const double _requiredDistanceMeters = 120;
+  static const Duration _minVisitDuration = Duration(seconds: 5);
+  double? _requiredDistanceMeters;
 
   final _stockController = TextEditingController();
   final _paymentController = TextEditingController();
   final _notesController = TextEditingController();
+  List<Map<String, dynamic>> _orders = [];
+  List<Map<String, dynamic>> _stockItems = [];
+  bool _hasStock = false;
+  String _paymentType = 'cash';
+  XFile? _chequeImage;
 
   StreamSubscription<Position>? _posSub;
   Timer? _ticker;
@@ -35,6 +43,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   @override
   void initState() {
     super.initState();
+    _loadDsfRadius();
     _startTracking();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -50,6 +59,25 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     _paymentController.dispose();
     _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDsfRadius() async {
+    try {
+      final session = Get.find<SessionService>();
+      final profile = session.profile;
+      if (profile == null) return;
+      final dsfDoc = await FirebaseFirestore.instance
+          .collection('dsfAccounts')
+          .doc(profile.uid)
+          .get();
+      final geo = dsfDoc.data()?['geofence'];
+      final rad = (geo is Map && geo['radiusMeters'] is num)
+          ? (geo['radiusMeters'] as num).toDouble()
+          : null;
+      setState(() => _requiredDistanceMeters = rad ?? 120);
+    } catch (_) {
+      setState(() => _requiredDistanceMeters = 120);
+    }
   }
 
   Future<void> _startTracking() async {
@@ -127,13 +155,135 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
 
   bool _isInside(double? distanceMeters) {
     if (distanceMeters == null) return false;
-    return distanceMeters <= _requiredDistanceMeters;
+    final req = _requiredDistanceMeters ?? 120;
+    return distanceMeters <= req;
   }
 
   void _maybeStartTimer(double? distanceMeters) {
     if (_visitStartedAt != null) return;
     if (!_isInside(distanceMeters)) return;
     _visitStartedAt = DateTime.now();
+  }
+
+  Future<void> _openOrderPage() async {
+    final result = await Get.toNamed(
+      AppRoutes.dsfAddOrder,
+      arguments: {'existing': _orders},
+    );
+    if (result is! List) return;
+    final normalized = <Map<String, dynamic>>[];
+    for (final item in result) {
+      if (item is Map) {
+        normalized.add(item.cast<String, dynamic>());
+      }
+    }
+    setState(() => _orders = normalized);
+  }
+
+  Future<void> _openStockDialog() async {
+    final result = await Get.toNamed(
+      AppRoutes.dsfAddStock,
+      arguments: {'existing': _stockItems},
+    );
+    if (result is! List) return;
+    final normalized = <Map<String, dynamic>>[];
+    for (final item in result) {
+      if (item is Map) normalized.add(item.cast<String, dynamic>());
+    }
+    setState(() {
+      _stockItems = normalized;
+      _hasStock = _stockItems.isNotEmpty;
+      _stockController.text = _stockItems.length.toString();
+    });
+  }
+
+  Future<void> _openRecoveryDialog() async {
+    final amountController = TextEditingController(
+      text: _paymentController.text,
+    );
+    String paymentType = _paymentType;
+    XFile? chequeImage = _chequeImage;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Add recovery'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: paymentType,
+                  items: const [
+                    DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                    DropdownMenuItem(value: 'cheque', child: Text('Cheque')),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() {
+                      paymentType = v;
+                      if (paymentType == 'cash') chequeImage = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: paymentType == 'cash'
+                        ? 'Cash amount'
+                        : 'Cheque amount',
+                  ),
+                ),
+                if (paymentType == 'cheque') ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final picked = await ImagePicker().pickImage(
+                        source: ImageSource.camera,
+                      );
+                      if (picked != null) {
+                        setState(() => chequeImage = picked);
+                      }
+                    },
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: Text(
+                      chequeImage == null ? 'Add cheque photo' : 'Change photo',
+                    ),
+                  ),
+                  if (chequeImage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        'Attached: ${chequeImage!.name}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (ok == true) {
+      setState(() {
+        _paymentType = paymentType;
+        _chequeImage = chequeImage;
+        _paymentController.text = amountController.text.trim();
+      });
+    }
   }
 
   Future<void> _saveVisit({
@@ -147,12 +297,27 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     required bool filer,
     required double discountPct,
   }) async {
-    final stock = double.tryParse(_stockController.text.trim());
-    final payment = double.tryParse(_paymentController.text.trim());
-    if (stock == null || payment == null) {
+    if (_orders.isEmpty) {
       Get.snackbar(
         'Missing data',
-        'Enter stock and payment (numbers).',
+        'Add at least one order.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+    if (!_hasStock || _stockItems.isEmpty) {
+      Get.snackbar(
+        'Missing data',
+        'Add current stock.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+    final amount = double.tryParse(_paymentController.text.trim());
+    if (amount == null) {
+      Get.snackbar(
+        'Missing data',
+        'Add recovery amount (number).',
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
@@ -183,6 +348,14 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
           .doc(dutyId)
           .collection('shopVisits')
           .doc(shopId);
+      String? chequeUrl;
+      if (_paymentType == 'cheque' && _chequeImage != null) {
+        final uploadRef = FirebaseStorage.instance.ref().child(
+          'cheques/$tsaId/$shopId/$dutyId.jpg',
+        );
+        await uploadRef.putData(await _chequeImage!.readAsBytes());
+        chequeUrl = await uploadRef.getDownloadURL();
+      }
       await ref.set({
         'dutyId': dutyId,
         'dsfId': dsfId,
@@ -190,8 +363,13 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         'tsaId': tsaId,
         'shopId': shopId,
         'shopTitle': shopTitle,
-        'stock': stock,
-        'payment': payment,
+        'orders': _orders,
+        'stockItems': _stockItems,
+        'recovery': {
+          'type': _paymentType,
+          'amount': amount,
+          if (_paymentType == 'cheque') 'chequeImageUrl': chequeUrl,
+        },
         'notes': _notesController.text.trim(),
         'visitStartedAt': _visitStartedAt?.toIso8601String(),
         'submittedAt': now,
@@ -239,10 +417,10 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
 
     final shopRef = tsaId.isNotEmpty
         ? FirebaseFirestore.instance
-            .collection('seedTsas')
-            .doc(tsaId)
-            .collection('shops')
-            .doc(shopId)
+              .collection('seedTsas')
+              .doc(tsaId)
+              .collection('shops')
+              .doc(shopId)
         : FirebaseFirestore.instance.collection('shops').doc(shopId);
 
     return Scaffold(
@@ -260,7 +438,8 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
             final shopData = snapshot.data!.data();
             final filer = (shopData?['filer'] as bool?) ?? false;
             final discountPct =
-                (shopData?['discountPct'] as num?)?.toDouble() ?? (filer ? 0.05 : 0.025);
+                (shopData?['discountPct'] as num?)?.toDouble() ??
+                (filer ? 0.05 : 0.025);
             final distanceMeters = _distanceToShopMeters(shopData);
             _maybeStartTimer(distanceMeters);
 
@@ -276,18 +455,20 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
               children: [
                 GlassCard(
                   padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          filer ? 'Filer shop (5% discount)' : 'Non-filer (2.5% discount)',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        filer
+                            ? 'Filer shop (5% discount)'
+                            : 'Non-filer (2.5% discount)',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
                       const SizedBox(height: 8),
                       if (!hasLocation)
                         const Text(
@@ -358,23 +539,57 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            TextField(
-                              controller: _stockController,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Current stock',
+                            const Text(
+                              'Actions',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _elapsed() >= _minVisitDuration
+                                    ? _openOrderPage
+                                    : null,
+                                child: const Text('Add order'),
                               ),
-                              enabled: _elapsed() >= _minVisitDuration,
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _elapsed() >= _minVisitDuration
+                                    ? _openRecoveryDialog
+                                    : null,
+                                child: const Text('Add recovery'),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _elapsed() >= _minVisitDuration
+                                    ? _openStockDialog
+                                    : null,
+                                child: const Text('Add current stock'),
+                              ),
                             ),
                             const SizedBox(height: 12),
-                            TextField(
-                              controller: _paymentController,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'Payment',
+                            if (_orders.isNotEmpty)
+                              Text(
+                                'Orders added: ${_orders.length}',
+                                style: Theme.of(context).textTheme.bodySmall,
                               ),
-                              enabled: _elapsed() >= _minVisitDuration,
-                            ),
+                            if (_hasStock)
+                              Text(
+                                'Stock items: ${_stockItems.length}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            if (_paymentController.text.trim().isNotEmpty)
+                              Text(
+                                'Recovery: ${_paymentType.toUpperCase()} ${_paymentController.text}'
+                                '${_paymentType == 'cheque' && _chequeImage != null ? ' (photo attached)' : ''}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
                             const SizedBox(height: 12),
                             TextField(
                               controller: _notesController,

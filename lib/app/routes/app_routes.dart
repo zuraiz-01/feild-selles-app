@@ -12,6 +12,8 @@ abstract class AppRoutes {
   static const dsfHome = '/dsf/home';
   static const dsfShops = '/dsf/shops';
   static const dsfShopVisit = '/dsf/shop-visit';
+  static const dsfAddOrder = '/dsf/add-order';
+  static const dsfAddStock = '/dsf/add-stock';
   static const distributorDashboard = '/distributor/dashboard';
   static const adminDsfs = '/admin/dsfs';
   static const adminShops = '/admin/shops';

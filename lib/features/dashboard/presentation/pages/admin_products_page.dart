@@ -11,7 +11,17 @@ class AdminProductsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final productsCol = FirebaseFirestore.instance.collection('products');
     return Scaffold(
-      appBar: AppBar(title: const Text('Products')),
+      appBar: AppBar(
+        title: const Text('Products'),
+        actions: [
+          IconButton(
+            tooltip: 'Add Excel default products',
+            icon: const Icon(Icons.playlist_add),
+            onPressed: () =>
+                _seedExcelDefaults(context, productsCol: productsCol),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context, productsCol: productsCol),
         child: const Icon(Icons.add),
@@ -41,8 +51,10 @@ class AdminProductsPage extends StatelessWidget {
                 final tax = (data['taxPct'] as num?)?.toDouble();
                 final active = (data['active'] as bool?) ?? true;
                 return GlassCard(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(name),
@@ -72,14 +84,65 @@ class AdminProductsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _seedExcelDefaults(
+    BuildContext context, {
+    required CollectionReference<Map<String, dynamic>> productsCol,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add default products'),
+        content: const Text(
+          'This will create products from the Excel format (CANOLA, CORN) if missing.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    final now = FieldValue.serverTimestamp();
+    const defaults = [
+      {'id': 'canola', 'name': 'CANOLA'},
+      {'id': 'corn', 'name': 'CORN'},
+    ];
+
+    for (final p in defaults) {
+      final ref = productsCol.doc(p['id']!);
+      batch.set(ref, {
+        'name': p['name'],
+        'active': true,
+        'updatedAt': now,
+        'createdAt': now,
+      }, SetOptions(merge: true));
+    }
+    await batch.commit();
+    if (!context.mounted) return;
+    Get.snackbar(
+      'Done',
+      'Default products added.',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
   Future<void> _openForm(
     BuildContext context, {
     required CollectionReference<Map<String, dynamic>> productsCol,
     String? existingId,
     Map<String, dynamic>? existing,
   }) async {
-    final nameController =
-        TextEditingController(text: existing?['name'] as String? ?? existingId ?? '');
+    final nameController = TextEditingController(
+      text: existing?['name'] as String? ?? existingId ?? '',
+    );
     final priceController = TextEditingController(
       text: (existing?['price'] as num?)?.toString() ?? '',
     );
