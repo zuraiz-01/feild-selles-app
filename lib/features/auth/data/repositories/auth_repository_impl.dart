@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../../core/domain/services/geofence_policy.dart';
@@ -17,6 +18,7 @@ class AuthRepositoryImpl implements AuthRepository {
   final LocationService _locationService;
   final GeofencePolicy _geofencePolicy;
   final SessionService _sessionService;
+  final FirebaseFirestore _firestore;
 
   AuthRepositoryImpl(
     this._authRemote,
@@ -25,6 +27,7 @@ class AuthRepositoryImpl implements AuthRepository {
     this._locationService,
     this._geofencePolicy,
     this._sessionService,
+    this._firestore,
   );
 
   @override
@@ -52,6 +55,12 @@ class AuthRepositoryImpl implements AuthRepository {
 
     if (effectiveRole == UserRole.dsf) {
       await _enforceOfficeGeofence(distributorId: profileModel.distributorId);
+      await _logAdminEvent(
+        type: 'dsf_login',
+        dsfId: uid,
+        distributorId: profileModel.distributorId,
+        locationLabel: 'at office',
+      );
     }
 
     return profileModel.toEntity(effectiveRole: effectiveRole);
@@ -108,7 +117,57 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
+    final profile = _sessionService.profile;
+    if (profile?.role == UserRole.dsf &&
+        _sessionService.activeDutyId != null) {
+      throw StateError('End duty before logout');
+    }
+    if (profile?.role == UserRole.dsf && profile != null) {
+      await _logDsfLogout(profile);
+    }
     await _sessionService.clear();
     await _authRemote.signOut();
+  }
+
+  Future<void> _logDsfLogout(SessionUserProfile profile) async {
+    double? lat;
+    double? lng;
+    try {
+      final Position pos = await _locationService.getCurrentPosition();
+      lat = pos.latitude;
+      lng = pos.longitude;
+    } catch (_) {
+      // ignore location failures for logout logging
+    }
+    await _logAdminEvent(
+      type: 'dsf_logout',
+      dsfId: profile.uid,
+      distributorId: profile.distributorId,
+      lat: lat,
+      lng: lng,
+    );
+  }
+
+  Future<void> _logAdminEvent({
+    required String type,
+    required String dsfId,
+    required String distributorId,
+    String? locationLabel,
+    double? lat,
+    double? lng,
+  }) async {
+    try {
+      await _firestore.collection('alerts').add({
+        'type': type,
+        'dsfId': dsfId,
+        'distributorId': distributorId,
+        if (locationLabel != null) 'locationLabel': locationLabel,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // ignore logging failures
+    }
   }
 }

@@ -42,6 +42,7 @@ class AuthBinding extends Bindings {
         Get.find<LocationService>(),
         Get.find<GeofencePolicy>(),
         Get.find<SessionService>(),
+        FirebaseFirestore.instance,
       ),
     );
 

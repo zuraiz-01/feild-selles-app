@@ -48,6 +48,18 @@ class AuthController extends GetxController {
     );
   }
 
+  String _cleanError(String message) {
+    const badStatePrefix = 'Bad state: ';
+    const exceptionPrefix = 'Exception: ';
+    if (message.startsWith(badStatePrefix)) {
+      return message.substring(badStatePrefix.length);
+    }
+    if (message.startsWith(exceptionPrefix)) {
+      return message.substring(exceptionPrefix.length);
+    }
+    return message;
+  }
+
   String _formatAuthError(FirebaseAuthException e) {
     final message = e.message ?? '';
     final combined = '${e.code} $message'.toLowerCase();
@@ -124,9 +136,16 @@ class AuthController extends GetxController {
     error.value = null;
     try {
       await _logoutUseCase();
+      email.value = '';
+      password.value = '';
       Get.offAllNamed(AppRoutes.login);
     } catch (e) {
       error.value = e.toString();
+      Get.snackbar(
+        'Logout blocked',
+        _cleanError(error.value ?? 'Logout failed.'),
+        snackPosition: SnackPosition.BOTTOM,
+      );
     } finally {
       isLoading.value = false;
     }

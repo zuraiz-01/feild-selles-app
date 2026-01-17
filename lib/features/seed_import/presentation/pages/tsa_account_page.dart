@@ -655,17 +655,20 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     required String tsaId,
     required String tsaName,
   }) async {
+    final officeLat = double.tryParse(_officeLat.text.trim());
+    final officeLng = double.tryParse(_officeLng.text.trim());
+    final officeRadius = double.tryParse(_officeRadius.text.trim());
+    if (officeLat == null || officeLng == null || officeRadius == null) {
+      setState(() {
+        _status = 'Office geofence (lat/lng/radius) is required.';
+      });
+      return;
+    }
     setState(() {
       _isWorking = true;
       _status = null;
     });
     try {
-      final officeLat = double.tryParse(_officeLat.text.trim());
-      final officeLng = double.tryParse(_officeLng.text.trim());
-      final officeRadius = double.tryParse(_officeRadius.text.trim());
-      if (officeLat == null || officeLng == null || officeRadius == null) {
-        throw StateError('Office geofence (lat/lng/radius) is required.');
-      }
       final account = await _service.createAccount(
         tsaId: tsaId,
         name: _name.text,

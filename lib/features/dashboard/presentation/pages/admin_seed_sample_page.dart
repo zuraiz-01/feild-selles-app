@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
+import '../../../products/data/models/product_model.dart';
 
 class AdminSeedSamplePage extends StatefulWidget {
   const AdminSeedSamplePage({super.key});
@@ -123,17 +124,26 @@ class _AdminSeedSamplePageState extends State<AdminSeedSamplePage> {
       // Sample products
       final productsCol = FirebaseFirestore.instance.collection('products');
       final products = [
-        {'id': 'prod_oil', 'name': 'Cooking Oil 1L', 'price': 1200.0, 'taxPct': 0},
-        {'id': 'prod_corn', 'name': 'Corn Oil 1L', 'price': 1350.0, 'taxPct': 0},
+        ProductModel(
+          sku: 'prod_oil',
+          name: 'Cooking Oil 1L',
+          category: 'Oil',
+          unit: 'L',
+          price: 1200.0,
+          stock: 0.0,
+        ),
+        ProductModel(
+          sku: 'prod_corn',
+          name: 'Corn Oil 1L',
+          category: 'Oil',
+          unit: 'L',
+          price: 1350.0,
+          stock: 0.0,
+        ),
       ];
       for (final p in products) {
-        final ref = productsCol.doc(p['id'] as String);
-        batch.set(ref, {
-          ...p,
-          'active': true,
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        final ref = productsCol.doc(p.sku);
+        batch.set(ref, p.toMap(), SetOptions(merge: true));
       }
 
       await batch.commit();

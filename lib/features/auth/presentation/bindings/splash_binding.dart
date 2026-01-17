@@ -40,6 +40,7 @@ class SplashBinding extends Bindings {
         Get.find(),
         Get.find(),
         Get.find<SessionService>(),
+        FirebaseFirestore.instance,
       ),
     );
 

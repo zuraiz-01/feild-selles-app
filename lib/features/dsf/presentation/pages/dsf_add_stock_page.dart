@@ -39,7 +39,6 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
 
     final products = FirebaseFirestore.instance
         .collection('products')
-        .where('active', isEqualTo: true)
         .snapshots();
 
     return Scaffold(
@@ -76,9 +75,12 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
                   }
                   final query = _searchController.text.trim().toLowerCase();
                   final docs = snapshot.data!.docs.where((d) {
-                    final name = (d.data()['name'] as String?) ?? d.id;
+                    final data = d.data();
+                    final name = (data['name'] as String?) ?? d.id;
+                    final sku = (data['sku'] as String?) ?? d.id;
                     if (query.isEmpty) return true;
-                    return name.toLowerCase().contains(query);
+                    return name.toLowerCase().contains(query) ||
+                        sku.toLowerCase().contains(query);
                   }).toList();
 
                   if (docs.isEmpty) {
@@ -92,7 +94,13 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
                       final doc = docs[index];
                       final data = doc.data();
                       final name = (data['name'] as String?) ?? doc.id;
+                      final sku = (data['sku'] as String?) ?? doc.id;
                       final price = (data['price'] as num?)?.toDouble();
+                      final details = <String>[
+                        if (sku.isNotEmpty) 'SKU: $sku',
+                        if (price != null)
+                          'Rate: ${price.toStringAsFixed(0)}',
+                      ];
                       return GlassCard(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 14,
@@ -101,10 +109,10 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
                         child: ListTile(
                           contentPadding: EdgeInsets.zero,
                           title: Text(name),
-                          subtitle: price == null
+                          subtitle: details.isEmpty
                               ? null
                               : Text(
-                                  'Price: ${price.toStringAsFixed(0)}',
+                                  details.join(' • '),
                                   style: const TextStyle(
                                     color: AppTheme.mutedInk,
                                   ),

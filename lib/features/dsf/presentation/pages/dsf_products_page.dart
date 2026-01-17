@@ -3,29 +3,18 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_theme.dart';
 import '../../../products/data/models/product_model.dart';
 
-class AdminProductsPage extends StatelessWidget {
-  const AdminProductsPage({super.key});
+class DsfProductsPage extends StatelessWidget {
+  const DsfProductsPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     final productsCol = FirebaseFirestore.instance.collection('products');
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Products'),
-        actions: [
-          IconButton(
-            tooltip: 'Add Excel default products',
-            icon: const Icon(Icons.playlist_add),
-            onPressed: () =>
-                _seedExcelDefaults(context, productsCol: productsCol),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openForm(context, productsCol: productsCol),
-        child: const Icon(Icons.add),
+        title: const Text('Product Details'),
       ),
       body: AppShell(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -67,7 +56,10 @@ class AdminProductsPage extends StatelessWidget {
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text(product.name),
-                    subtitle: Text(details.join(' • ')),
+                    subtitle: Text(
+                      details.join(' • '),
+                      style: const TextStyle(color: AppTheme.mutedInk),
+                    ),
                     trailing: IconButton(
                       icon: const Icon(Icons.edit),
                       onPressed: () => _openForm(
@@ -87,76 +79,32 @@ class AdminProductsPage extends StatelessWidget {
     );
   }
 
-  Future<void> _seedExcelDefaults(
-    BuildContext context, {
-    required CollectionReference<Map<String, dynamic>> productsCol,
-  }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add default products'),
-        content: const Text(
-          'This will create products from the Excel format (CANOLA, CORN) if missing.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-
-    final batch = FirebaseFirestore.instance.batch();
-    const defaults = [
-      {'id': 'canola', 'sku': 'CANOLA', 'name': 'CANOLA'},
-      {'id': 'corn', 'sku': 'CORN', 'name': 'CORN'},
-    ];
-
-    for (final p in defaults) {
-      final ref = productsCol.doc(p['id']!);
-      final product = ProductModel(
-        sku: p['sku']!,
-        name: p['name']!,
-      );
-      batch.set(ref, product.toMap(), SetOptions(merge: true));
-    }
-    await batch.commit();
-    if (!context.mounted) return;
-    Get.snackbar(
-      'Done',
-      'Default products added.',
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
   Future<void> _openForm(
     BuildContext context, {
     required CollectionReference<Map<String, dynamic>> productsCol,
-    String? existingId,
-    Map<String, dynamic>? existing,
+    required String existingId,
+    required Map<String, dynamic> existing,
   }) async {
-    final existingProduct = existing == null
-        ? null
-        : ProductModel.fromMap(existing, fallbackId: existingId ?? '');
-    final nameController = TextEditingController(
-      text: existingProduct?.name ?? '',
-    );
-    final skuController = TextEditingController(
-      text: existingProduct?.sku ?? existingId ?? '',
-    );
-    final isEditing = existingId != null;
+    final existingProduct =
+        ProductModel.fromMap(existing, fallbackId: existingId);
+    final nameController = TextEditingController(text: existingProduct.name);
+    final skuController = TextEditingController(text: existingProduct.sku);
+    final categoryController =
+        TextEditingController(text: existingProduct.category ?? '');
+    final brandController =
+        TextEditingController(text: existingProduct.brand ?? '');
+    final unitController =
+        TextEditingController(text: existingProduct.unit ?? '');
+    final priceController =
+        TextEditingController(text: existingProduct.price?.toString() ?? '');
+    final stockController =
+        TextEditingController(text: existingProduct.stock?.toString() ?? '');
 
     await showDialog<void>(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(existingId == null ? 'Add product' : 'Edit product'),
+          title: const Text('Update product details'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -170,7 +118,35 @@ class AdminProductsPage extends StatelessWidget {
                   decoration: const InputDecoration(
                     labelText: 'Product Code / SKU',
                   ),
-                  readOnly: isEditing,
+                  readOnly: true,
+                ),
+                TextField(
+                  controller: categoryController,
+                  decoration: const InputDecoration(labelText: 'Category'),
+                ),
+                TextField(
+                  controller: brandController,
+                  decoration: const InputDecoration(labelText: 'Brand'),
+                ),
+                TextField(
+                  controller: unitController,
+                  decoration: const InputDecoration(labelText: 'Unit'),
+                ),
+                TextField(
+                  controller: priceController,
+                  decoration: const InputDecoration(labelText: 'Price / Rate'),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+                TextField(
+                  controller: stockController,
+                  decoration: const InputDecoration(
+                    labelText: 'Stock / Quantity',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                 ),
               ],
             ),
@@ -182,17 +158,36 @@ class AdminProductsPage extends StatelessWidget {
             ),
             ElevatedButton(
               onPressed: () async {
+                String? cleanText(String raw) {
+                  final trimmed = raw.trim();
+                  return trimmed.isEmpty ? null : trimmed;
+                }
+
+                double? parseNumber(String raw) {
+                  final trimmed = raw.trim();
+                  if (trimmed.isEmpty) return null;
+                  return double.tryParse(trimmed);
+                }
+
                 final name = nameController.text.trim();
                 final sku = skuController.text.trim();
                 if (name.isEmpty || sku.isEmpty) return;
-                final product = ProductModel(sku: sku, name: name);
+                final product = ProductModel(
+                  sku: sku,
+                  name: name,
+                  category: cleanText(categoryController.text),
+                  brand: cleanText(brandController.text),
+                  unit: cleanText(unitController.text),
+                  price: parseNumber(priceController.text),
+                  stock: parseNumber(stockController.text),
+                );
                 await productsCol
-                    .doc(existingId ?? sku)
+                    .doc(existingId)
                     .set(product.toMap(), SetOptions(merge: true));
                 if (context.mounted) Navigator.of(context).pop();
                 Get.snackbar(
                   'Saved',
-                  'Product $name saved',
+                  'Product $name updated',
                   snackPosition: SnackPosition.BOTTOM,
                 );
               },

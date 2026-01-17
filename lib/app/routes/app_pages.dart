@@ -17,6 +17,7 @@ import '../../features/dsf/presentation/pages/dsf_add_order_page.dart';
 import '../../features/dsf/presentation/pages/dsf_add_stock_page.dart';
 import '../../features/dsf/presentation/pages/shops_to_visit_page.dart';
 import '../../features/dsf/presentation/pages/dsf_shop_visit_page.dart';
+import '../../features/dsf/presentation/pages/dsf_products_page.dart';
 import '../../features/duty/presentation/bindings/duty_binding.dart';
 import '../../features/seed_import/presentation/bindings/seed_import_binding.dart';
 import '../../features/seed_import/presentation/bindings/seed_tsa_binding.dart';
@@ -80,6 +81,7 @@ abstract class AppPages {
     GetPage(name: AppRoutes.dsfShopVisit, page: () => const DsfShopVisitPage()),
     GetPage(name: AppRoutes.dsfAddOrder, page: () => const DsfAddOrderPage()),
     GetPage(name: AppRoutes.dsfAddStock, page: () => const DsfAddStockPage()),
+    GetPage(name: AppRoutes.dsfProducts, page: () => const DsfProductsPage()),
     GetPage(
       name: AppRoutes.distributorDashboard,
       page: () => const DistributorDashboardPage(),

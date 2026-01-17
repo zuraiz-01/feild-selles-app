@@ -24,8 +24,7 @@ class AdminDashboardPage extends StatelessWidget {
         ],
       ),
       body: AppShell(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: ListView(
           children: [
             const SectionTitle(
               title: 'Control Center',

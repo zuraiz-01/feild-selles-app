@@ -76,6 +76,12 @@ class DsfHomePage extends StatelessWidget {
                       ),
                       const SizedBox(height: 12),
                     ],
+                    OutlinedButton.icon(
+                      onPressed: () => Get.toNamed(AppRoutes.dsfProducts),
+                      icon: const Icon(Icons.inventory_2_outlined),
+                      label: const Text('Update Product Details'),
+                    ),
+                    const SizedBox(height: 12),
                     ElevatedButton(
                       onPressed: dutyController.isLoading.value ||
                               dutyController.activeDutyId != null
