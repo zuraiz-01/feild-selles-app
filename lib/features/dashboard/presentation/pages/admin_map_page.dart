@@ -31,7 +31,38 @@ class AdminMapPage extends StatelessWidget {
         .snapshots();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Live Tracking')),
+      appBar: AppBar(
+        titleSpacing: 20,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppTheme.warmSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.map_outlined, color: AppTheme.accent),
+            ),
+            const SizedBox(width: 10),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Live Tracking',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Sessions & recent alerts',
+                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
       body: AppShell(
         child: Column(
           children: [
@@ -120,8 +151,12 @@ class AdminMapPage extends StatelessWidget {
                           final distributorId =
                               (data['distributorId'] as String?) ?? '';
                           final last = data['lastPoint'];
-                          final lat = last is Map ? (last['lat'] as num?) : null;
-                          final lng = last is Map ? (last['lng'] as num?) : null;
+                          final lat = last is Map
+                              ? (last['lat'] as num?)
+                              : null;
+                          final lng = last is Map
+                              ? (last['lng'] as num?)
+                              : null;
                           final updatedAt = data['updatedAt'];
                           final ts = updatedAt is Timestamp
                               ? updatedAt.toDate()
@@ -184,14 +219,15 @@ class AdminMapPage extends StatelessWidget {
                           final type = (data['type'] as String?) ?? 'event';
                           final dsfId = (data['dsfId'] as String?) ?? '';
                           final createdAt = data['createdAt'];
-                          final ts =
-                              createdAt is Timestamp ? createdAt.toDate() : null;
+                          final ts = createdAt is Timestamp
+                              ? createdAt.toDate()
+                              : null;
                           final lat = (data['lat'] as num?)?.toDouble();
                           final lng = (data['lng'] as num?)?.toDouble();
                           final locationLabel =
                               (data['locationLabel'] as String?)?.trim();
-                          final distance =
-                              (data['distanceMeters'] as num?)?.toDouble();
+                          final distance = (data['distanceMeters'] as num?)
+                              ?.toDouble();
 
                           String title;
                           switch (type) {
@@ -262,16 +298,16 @@ class AdminMapPage extends StatelessWidget {
                                       children: [
                                         Text(
                                           title,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
                                         ),
                                         if (subtitleParts.isNotEmpty)
                                           Text(
                                             subtitleParts.join(' • '),
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall,
                                           ),
                                       ],
                                     ),
@@ -434,8 +470,7 @@ class _LiveSessionSheet extends StatelessWidget {
                   return Column(
                     children: docs.map((doc) {
                       final data = doc.data();
-                      final title =
-                          (data['shopTitle'] as String?) ?? doc.id;
+                      final title = (data['shopTitle'] as String?) ?? doc.id;
                       final submittedAt = data['submittedAt'];
                       final ts = submittedAt is Timestamp
                           ? submittedAt.toDate()
@@ -468,16 +503,16 @@ class _LiveSessionSheet extends StatelessWidget {
                                   children: [
                                     Text(
                                       title,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium,
                                     ),
                                     if (ts != null)
                                       Text(
                                         ts.toLocal().toString(),
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .bodySmall,
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
                                       ),
                                   ],
                                 ),

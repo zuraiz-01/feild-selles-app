@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_theme.dart';
 import '../../../products/data/models/product_model.dart';
 
 class AdminProductsPage extends StatelessWidget {
@@ -13,7 +14,39 @@ class AdminProductsPage extends StatelessWidget {
     final productsCol = FirebaseFirestore.instance.collection('products');
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Products'),
+        titleSpacing: 20,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppTheme.warmSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.inventory_2_outlined,
+                color: AppTheme.accent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Products',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'SKUs, rates, inventory',
+                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Add Excel default products',
@@ -21,6 +54,7 @@ class AdminProductsPage extends StatelessWidget {
             onPressed: () =>
                 _seedExcelDefaults(context, productsCol: productsCol),
           ),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: FloatingActionButton(
@@ -39,19 +73,22 @@ class AdminProductsPage extends StatelessWidget {
             }
             final docs = snapshot.data!.docs;
             if (docs.isEmpty) {
-              return const Center(child: Text('No products yet.'));
+              return const Center(
+                child: Text('No products yet. Add your first.'),
+              );
             }
             return ListView.separated(
               itemCount: docs.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final doc = docs[index];
-                final product =
-                    ProductModel.fromMap(doc.data(), fallbackId: doc.id);
+                final product = ProductModel.fromMap(
+                  doc.data(),
+                  fallbackId: doc.id,
+                );
                 final details = <String>[
                   'SKU ${product.sku}',
-                  if (product.category != null)
-                    'Category ${product.category}',
+                  if (product.category != null) 'Category ${product.category}',
                   if (product.brand != null) 'Brand ${product.brand}',
                   if (product.unit != null) 'Unit ${product.unit}',
                   if (product.price != null)
@@ -64,19 +101,50 @@ class AdminProductsPage extends StatelessWidget {
                     horizontal: 16,
                     vertical: 14,
                   ),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(product.name),
-                    subtitle: Text(details.join(' • ')),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _openForm(
-                        context,
-                        productsCol: productsCol,
-                        existingId: doc.id,
-                        existing: doc.data(),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 44,
+                        width: 44,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.inventory_2,
+                          color: AppTheme.accent,
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              product.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              details.join(' · '),
+                              style: const TextStyle(color: AppTheme.mutedInk),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _openForm(
+                          context,
+                          productsCol: productsCol,
+                          existingId: doc.id,
+                          existing: doc.data(),
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -120,10 +188,7 @@ class AdminProductsPage extends StatelessWidget {
 
     for (final p in defaults) {
       final ref = productsCol.doc(p['id']!);
-      final product = ProductModel(
-        sku: p['sku']!,
-        name: p['name']!,
-      );
+      final product = ProductModel(sku: p['sku']!, name: p['name']!);
       batch.set(ref, product.toMap(), SetOptions(merge: true));
     }
     await batch.commit();
@@ -150,6 +215,9 @@ class AdminProductsPage extends StatelessWidget {
     final skuController = TextEditingController(
       text: existingProduct?.sku ?? existingId ?? '',
     );
+    final rateController = TextEditingController(
+      text: existingProduct?.price?.toStringAsFixed(2) ?? '',
+    );
     final isEditing = existingId != null;
 
     await showDialog<void>(
@@ -172,6 +240,16 @@ class AdminProductsPage extends StatelessWidget {
                   ),
                   readOnly: isEditing,
                 ),
+                TextField(
+                  controller: rateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Rate',
+                    prefixText: 'Rs ',
+                  ),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
               ],
             ),
           ),
@@ -184,8 +262,9 @@ class AdminProductsPage extends StatelessWidget {
               onPressed: () async {
                 final name = nameController.text.trim();
                 final sku = skuController.text.trim();
+                final rate = double.tryParse(rateController.text.trim());
                 if (name.isEmpty || sku.isEmpty) return;
-                final product = ProductModel(sku: sku, name: name);
+                final product = ProductModel(sku: sku, name: name, price: rate);
                 await productsCol
                     .doc(existingId ?? sku)
                     .set(product.toMap(), SetOptions(merge: true));

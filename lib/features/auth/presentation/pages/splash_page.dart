@@ -14,32 +14,56 @@ class SplashPage extends GetView<SplashController> {
       builder: (_) {
         return Scaffold(
           body: AppShell(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: Image.asset(
-                      'assets/logo.jpg',
-                      width: 120,
-                      height: 120,
-                      fit: BoxFit.cover,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  height: 140,
+                  width: 140,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [AppTheme.warmSoft, AppTheme.accentSoft],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x1A000000),
+                        blurRadius: 24,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.local_cafe,
+                      size: 44,
+                      color: AppTheme.accent,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Field Sales App',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.ink,
-                    ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Field Sales App',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.ink,
                   ),
-                  const SizedBox(height: 16),
-                  const CircularProgressIndicator(),
-                ],
-              ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Brewing your workspace...',
+                  style: TextStyle(color: AppTheme.mutedInk),
+                ),
+                const SizedBox(height: 18),
+                const SizedBox(
+                  height: 36,
+                  width: 36,
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                ),
+              ],
             ),
           ),
         );

@@ -15,13 +15,43 @@ class SeedImportPage extends GetView<SeedImportController> {
     final authController = Get.find<AuthController>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Seed Import'),
+        titleSpacing: 20,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppTheme.warmSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.cloud_upload, color: AppTheme.accent),
+            ),
+            const SizedBox(width: 10),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Seed Import',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Excel to Firestore',
+                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: () => authController.logout(),
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: AppShell(
@@ -58,13 +88,19 @@ class SeedImportPage extends GetView<SeedImportController> {
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton(
-                      onPressed:
-                          running ? null : controller.importFromBundledExcelAsset,
-                      child: Text(running ? 'Importing...' : 'Import bundled Excel'),
+                      onPressed: running
+                          ? null
+                          : controller.importFromBundledExcelAsset,
+                      child: Text(
+                        running ? 'Importing...' : 'Import bundled Excel',
+                      ),
                     ),
                     const SizedBox(height: 12),
                     if (err != null) ...[
-                      Text(err, style: const TextStyle(color: Color(0xFFD05353))),
+                      Text(
+                        err,
+                        style: const TextStyle(color: Color(0xFFD05353)),
+                      ),
                       const SizedBox(height: 12),
                     ],
                     if (result != null) ...[
@@ -73,7 +109,10 @@ class SeedImportPage extends GetView<SeedImportController> {
                         runSpacing: 8,
                         children: [
                           _StatChip(label: 'TSAs', value: '${result.tsaCount}'),
-                          _StatChip(label: 'Shops', value: '${result.shopCount}'),
+                          _StatChip(
+                            label: 'Shops',
+                            value: '${result.shopCount}',
+                          ),
                           _StatChip(
                             label: 'Shop sales',
                             value: '${result.saleDocsCount}',
@@ -82,7 +121,10 @@ class SeedImportPage extends GetView<SeedImportController> {
                             label: 'Distributors',
                             value: '${result.distributorCount}',
                           ),
-                          _StatChip(label: 'Parties', value: '${result.partyCount}'),
+                          _StatChip(
+                            label: 'Parties',
+                            value: '${result.partyCount}',
+                          ),
                           _StatChip(
                             label: 'Distributor sales',
                             value: '${result.distributorSaleDocsCount}',
@@ -122,11 +164,7 @@ class _StatChip extends StatelessWidget {
   final String value;
   final Color? tint;
 
-  const _StatChip({
-    required this.label,
-    required this.value,
-    this.tint,
-  });
+  const _StatChip({required this.label, required this.value, this.tint});
 
   @override
   Widget build(BuildContext context) {

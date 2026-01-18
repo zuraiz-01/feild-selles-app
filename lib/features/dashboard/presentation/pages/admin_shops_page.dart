@@ -18,7 +18,41 @@ class AdminShopsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final shopsCol = FirebaseFirestore.instance.collection('shops');
     return Scaffold(
-      appBar: AppBar(title: const Text('Shops')),
+      appBar: AppBar(
+        titleSpacing: 20,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppTheme.warmSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(
+                Icons.store_mall_directory_outlined,
+                color: AppTheme.accent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Manage Shops',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Codes, filer status, routes',
+                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context, shopsCol: shopsCol),
         child: const Icon(Icons.add),
@@ -35,7 +69,7 @@ class AdminShopsPage extends StatelessWidget {
             }
             final docs = snapshot.data!.docs;
             if (docs.isEmpty) {
-              return const Center(child: Text('No shops yet.'));
+              return const Center(child: Text('No shops yet. Add your first.'));
             }
             return ListView.separated(
               itemCount: docs.length,
@@ -53,26 +87,52 @@ class AdminShopsPage extends StatelessWidget {
                     horizontal: 16,
                     vertical: 14,
                   ),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('$code ${name.isEmpty ? '' : '- $name'}'),
-                    subtitle: Text(
-                      [
-                        filer ? 'Filer' : 'Non-filer',
-                        if (discount != null)
-                          'Discount ${(discount * 100).toStringAsFixed(1)}%',
-                        if (assigned.isNotEmpty) 'DSF $assigned',
-                      ].join(' • '),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _openForm(
-                        context,
-                        shopsCol: shopsCol,
-                        existingId: doc.id,
-                        existing: data,
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 44,
+                        width: 44,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.store, color: AppTheme.accent),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$code ${name.isEmpty ? '' : '- $name'}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              [
+                                filer ? 'Filer' : 'Non-filer',
+                                if (discount != null)
+                                  'Discount ${(discount * 100).toStringAsFixed(1)}%',
+                                if (assigned.isNotEmpty) 'DSF $assigned',
+                              ].join(' · '),
+                              style: const TextStyle(color: AppTheme.mutedInk),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _openForm(
+                          context,
+                          shopsCol: shopsCol,
+                          existingId: doc.id,
+                          existing: data,
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -245,40 +305,63 @@ class AdminShopsPage extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            DropdownButtonFormField<String>(
-                              value:
-                                  (selectedDsf != null &&
-                                      dsfOptions.any(
-                                        (o) => o.id == selectedDsf,
-                                      ))
-                                  ? selectedDsf
-                                  : '',
-                              decoration: const InputDecoration(
-                                labelText: 'Assigned DSF',
-                              ),
-                              items: [
-                                const DropdownMenuItem(
-                                  value: '',
-                                  child: Text('Unassigned'),
-                                ),
-                                ...dsfOptions.map(
-                                  (d) => DropdownMenuItem(
-                                    value: d.id,
-                                    child: Text(
-                                      d.name.isNotEmpty
-                                          ? '${d.name} (${d.id})'
-                                          : d.id,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                            Builder(
+                              builder: (context) {
+                                final dropdownItems =
+                                    <DropdownMenuItem<String>>[
+                                      const DropdownMenuItem(
+                                        value: '',
+                                        child: Text('Unassigned'),
+                                      ),
+                                      ...dsfOptions.map(
+                                        (d) => DropdownMenuItem(
+                                          value: d.id,
+                                          child: Text(
+                                            d.name.isNotEmpty
+                                                ? '${d.name} (${d.id})'
+                                                : d.id,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                                    ];
+
+                                return DropdownButtonFormField<String>(
+                                  value:
+                                      (selectedDsf != null &&
+                                          dsfOptions.any(
+                                            (o) => o.id == selectedDsf,
+                                          ))
+                                      ? selectedDsf
+                                      : '',
+                                  decoration: const InputDecoration(
+                                    labelText: 'Assigned DSF',
                                   ),
-                                ),
-                              ],
-                              onChanged: (v) => setState(
-                                () => selectedDsf = (v == null || v.isEmpty)
-                                    ? null
-                                    : v,
-                              ),
+                                  isExpanded: true,
+                                  items: dropdownItems,
+                                  selectedItemBuilder: (context) =>
+                                      dropdownItems
+                                          .map(
+                                            (item) => Align(
+                                              alignment: Alignment.centerLeft,
+                                              child: DefaultTextStyle.merge(
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 1,
+                                                child:
+                                                    item.child ??
+                                                    const SizedBox(),
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                  onChanged: (v) => setState(
+                                    () => selectedDsf = (v == null || v.isEmpty)
+                                        ? null
+                                        : v,
+                                  ),
+                                );
+                              },
                             ),
                             const SizedBox(height: 6),
                             Align(
@@ -340,6 +423,23 @@ class AdminShopsPage extends StatelessWidget {
                 ),
               ),
               actions: [
+                if (existingId != null)
+                  TextButton.icon(
+                    onPressed: () async {
+                      await shopsCol.doc(existingId).delete();
+                      if (context.mounted) Navigator.of(context).pop();
+                      Get.snackbar(
+                        'Deleted',
+                        'Shop $existingId removed',
+                        snackPosition: SnackPosition.BOTTOM,
+                      );
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    label: const Text(
+                      'Delete',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Cancel'),

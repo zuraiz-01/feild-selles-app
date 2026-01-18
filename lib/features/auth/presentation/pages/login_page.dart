@@ -36,42 +36,50 @@ class _LoginPageState extends State<LoginPage> {
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: IntrinsicHeight(
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Container(
-                            height: 44,
-                            width: 44,
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentSoft,
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.visibility, color: AppTheme.accent),
+                      Container(
+                        height: 120,
+                        width: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: [AppTheme.warmSoft, AppTheme.accentSoft],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Welcome back',
-                                  style: TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.ink,
-                                  ),
-                                ),
-                                SizedBox(height: 4),
-                                Text(
-                                  'Sign in to continue your workflow',
-                                  style: TextStyle(color: AppTheme.mutedInk),
-                                ),
-                              ],
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x1A000000),
+                              blurRadius: 20,
+                              offset: Offset(0, 10),
                             ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Icon(
+                            Icons.coffee_outlined,
+                            size: 40,
+                            color: AppTheme.accent,
                           ),
-                        ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Welcome back',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Sign in to continue your workflow',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppTheme.mutedInk),
                       ),
                       const SizedBox(height: 24),
                       GlassCard(
@@ -82,7 +90,9 @@ class _LoginPageState extends State<LoginPage> {
                               if (controller.error.value != null) ...[
                                 Text(
                                   controller.error.value!,
-                                  style: const TextStyle(color: Color(0xFFD05353)),
+                                  style: const TextStyle(
+                                    color: Color(0xFFD05353),
+                                  ),
                                 ),
                                 const SizedBox(height: 12),
                               ],
@@ -120,29 +130,31 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               const SizedBox(height: 16),
                               ElevatedButton(
-                                onPressed:
-                                    controller.isLoading.value ? null : controller.login,
+                                onPressed: controller.isLoading.value
+                                    ? null
+                                    : controller.login,
                                 child: controller.isLoading.value
                                     ? const SizedBox(
                                         height: 20,
                                         width: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
                                       )
                                     : const Text('Login'),
                               ),
                               if (showBootstrap) ...[
                                 const SizedBox(height: 8),
-                                TextButton(
-                                  onPressed: () =>
-                                      Get.toNamed(AppRoutes.bootstrapAccounts),
-                                  child: const Text('Bootstrap accounts'),
-                                ),
+                                // TextButton(
+                                //   onPressed: () =>
+                                //       Get.toNamed(AppRoutes.bootstrapAccounts),
+                                //   child: const Text('Bootstrap accounts'),
+                                // ),
                               ],
                             ],
                           ),
                         ),
                       ),
-                      const Spacer(),
                     ],
                   ),
                 ),

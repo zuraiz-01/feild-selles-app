@@ -118,13 +118,43 @@ class TsaListPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TSAs'),
+        titleSpacing: 20,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppTheme.warmSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.groups, color: AppTheme.accent),
+            ),
+            const SizedBox(width: 10),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TSAs',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Seeded accounts',
+                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: () => authController.logout(),
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
           ),
+          const SizedBox(width: 8),
         ],
       ),
       floatingActionButton: FloatingActionButton(

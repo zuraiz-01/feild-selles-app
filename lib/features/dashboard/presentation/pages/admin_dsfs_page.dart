@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_theme.dart';
 
 class AdminDsfsPage extends StatelessWidget {
   const AdminDsfsPage({super.key});
@@ -11,7 +12,38 @@ class AdminDsfsPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final dsfCol = FirebaseFirestore.instance.collection('dsfAccounts');
     return Scaffold(
-      appBar: AppBar(title: const Text('DSFs')),
+      appBar: AppBar(
+        titleSpacing: 20,
+        toolbarHeight: 70,
+        title: Row(
+          children: [
+            Container(
+              height: 42,
+              width: 42,
+              decoration: BoxDecoration(
+                color: AppTheme.warmSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.manage_accounts, color: AppTheme.accent),
+            ),
+            const SizedBox(width: 10),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Manage DSFs',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Accounts, geofence & access',
+                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context, dsfCol: dsfCol),
         child: const Icon(Icons.add),
@@ -28,7 +60,7 @@ class AdminDsfsPage extends StatelessWidget {
             }
             final docs = snapshot.data!.docs;
             if (docs.isEmpty) {
-              return const Center(child: Text('No DSFs yet.'));
+              return const Center(child: Text('No DSFs yet. Add your first.'));
             }
             return ListView.separated(
               itemCount: docs.length,
@@ -41,29 +73,58 @@ class AdminDsfsPage extends StatelessWidget {
                 final geofence = data['geofence'];
                 final radius =
                     (geofence is Map && geofence['radiusMeters'] is num)
-                        ? (geofence['radiusMeters'] as num).toDouble()
-                        : null;
+                    ? (geofence['radiusMeters'] as num).toDouble()
+                    : null;
                 return GlassCard(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(name),
-                    subtitle: Text(
-                      [
-                        if (email.isNotEmpty) email,
-                        if (radius != null) 'Geofence: ${radius.toStringAsFixed(0)} m',
-                      ].join(' • '),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.edit),
-                      onPressed: () => _openForm(
-                        context,
-                        dsfCol: dsfCol,
-                        existingId: doc.id,
-                        existing: data,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 44,
+                        width: 44,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(Icons.badge, color: AppTheme.accent),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              [
+                                if (email.isNotEmpty) email,
+                                if (radius != null)
+                                  'Geofence ${radius.toStringAsFixed(0)} m',
+                              ].join(' · '),
+                              style: const TextStyle(color: AppTheme.mutedInk),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => _openForm(
+                          context,
+                          dsfCol: dsfCol,
+                          existingId: doc.id,
+                          existing: data,
+                        ),
+                      ),
+                    ],
                   ),
                 );
               },
@@ -80,12 +141,15 @@ class AdminDsfsPage extends StatelessWidget {
     String? existingId,
     Map<String, dynamic>? existing,
   }) async {
-    final idController =
-        TextEditingController(text: existingId ?? (existing?['tsaId'] as String?) ?? '');
-    final nameController =
-        TextEditingController(text: (existing?['name'] as String?) ?? '');
-    final emailController =
-        TextEditingController(text: (existing?['email'] as String?) ?? '');
+    final idController = TextEditingController(
+      text: existingId ?? (existing?['tsaId'] as String?) ?? '',
+    );
+    final nameController = TextEditingController(
+      text: (existing?['name'] as String?) ?? '',
+    );
+    final emailController = TextEditingController(
+      text: (existing?['email'] as String?) ?? '',
+    );
     final distributorController = TextEditingController(
       text: (existing?['distributorId'] as String?) ?? '',
     );
@@ -110,7 +174,9 @@ class AdminDsfsPage extends StatelessWidget {
               children: [
                 TextField(
                   controller: idController,
-                  decoration: const InputDecoration(labelText: 'DSF ID / TSA ID'),
+                  decoration: const InputDecoration(
+                    labelText: 'DSF ID / TSA ID',
+                  ),
                   readOnly: existingId != null,
                 ),
                 TextField(
@@ -119,11 +185,15 @@ class AdminDsfsPage extends StatelessWidget {
                 ),
                 TextField(
                   controller: emailController,
-                  decoration: const InputDecoration(labelText: 'Email (optional)'),
+                  decoration: const InputDecoration(
+                    labelText: 'Email (optional)',
+                  ),
                 ),
                 TextField(
                   controller: distributorController,
-                  decoration: const InputDecoration(labelText: 'Distributor ID'),
+                  decoration: const InputDecoration(
+                    labelText: 'Distributor ID',
+                  ),
                 ),
                 const SizedBox(height: 12),
                 const Align(
@@ -154,7 +224,9 @@ class AdminDsfsPage extends StatelessWidget {
                     Expanded(
                       child: TextField(
                         controller: radiusController,
-                        decoration: const InputDecoration(labelText: 'Radius m'),
+                        decoration: const InputDecoration(
+                          labelText: 'Radius m',
+                        ),
                         keyboardType: TextInputType.number,
                       ),
                     ),

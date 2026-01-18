@@ -1,24 +1,20 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  static const Color ink = Color(0xFF1F1E2B);
-  static const Color mutedInk = Color(0xFF6B6A7A);
-  static const Color card = Color(0xFFFFFFFF);
-  static const Color accent = Color(0xFF5CC8C0);
-  static const Color accentSoft = Color(0xFFD7F3F1);
-  static const Color warm = Color(0xFFF2B8A2);
-  static const Color warmSoft = Color(0xFFFBE4DA);
-  static const Color sky = Color(0xFF8EB5FF);
-  static const Color skySoft = Color(0xFFE5EEFF);
+  static const Color ink = Color(0xFF3B2A1A);
+  static const Color mutedInk = Color(0xFF8A796E);
+  static const Color card = Color(0xFFFDF7F0);
+  static const Color accent = Color(0xFFD8825A);
+  static const Color accentSoft = Color(0xFFF5DCC8);
+  static const Color warm = Color(0xFFE6BFA3);
+  static const Color warmSoft = Color(0xFFF9E9DB);
+  static const Color sky = Color(0xFFC2D9D2);
+  static const Color skySoft = Color(0xFFEAF2EE);
 
   static const LinearGradient background = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [
-      Color(0xFFF7F6FF),
-      Color(0xFFE9F4FF),
-      Color(0xFFFDF0E7),
-    ],
+    colors: [Color(0xFFF8EEE3), Color(0xFFFFF6ED), Color(0xFFF2E2D2)],
   );
 
   static ThemeData buildTheme() {
@@ -30,14 +26,8 @@ class AppTheme {
     return base.copyWith(
       scaffoldBackgroundColor: Colors.transparent,
       textTheme: base.textTheme.copyWith(
-        headlineSmall: const TextStyle(
-          fontWeight: FontWeight.w700,
-          color: ink,
-        ),
-        titleMedium: const TextStyle(
-          fontWeight: FontWeight.w600,
-          color: ink,
-        ),
+        headlineSmall: const TextStyle(fontWeight: FontWeight.w700, color: ink),
+        titleMedium: const TextStyle(fontWeight: FontWeight.w600, color: ink),
         bodyMedium: const TextStyle(color: ink),
         bodySmall: const TextStyle(color: mutedInk),
       ),
@@ -63,15 +53,16 @@ class AppTheme {
       cardTheme: CardThemeData(
         color: card,
         elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         margin: EdgeInsets.zero,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFFF4F5FA),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        fillColor: const Color(0xFFFBF1E6),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
@@ -79,7 +70,7 @@ class AppTheme {
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: ink,
+          backgroundColor: accent,
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -91,7 +82,7 @@ class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: ink,
-          side: const BorderSide(color: Color(0xFFE3E5EF)),
+          side: const BorderSide(color: Color(0xFFEBD8CC)),
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
@@ -102,9 +93,7 @@ class AppTheme {
         backgroundColor: const Color(0xFFF1F2F7),
         labelStyle: const TextStyle(color: ink),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
