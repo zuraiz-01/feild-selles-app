@@ -6,6 +6,7 @@ import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
+import '../../data/dsf_account_service.dart';
 import '../../data/seed_utils.dart';
 
 class TsaListPage extends StatelessWidget {
@@ -111,6 +112,149 @@ class TsaListPage extends StatelessWidget {
     );
   }
 
+  Future<void> _deleteDocsByQuery(Query<Map<String, dynamic>> query) async {
+    const batchSize = 300;
+    final firestore = FirebaseFirestore.instance;
+
+    while (true) {
+      final snap = await query.limit(batchSize).get();
+      if (snap.docs.isEmpty) break;
+
+      final batch = firestore.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
+      if (snap.docs.length < batchSize) break;
+    }
+  }
+
+  Future<void> _deleteShopSalesAndShops(
+    FirebaseFirestore firestore,
+    String tsaId,
+  ) async {
+    final shopsCol = firestore
+        .collection('seedTsas')
+        .doc(tsaId)
+        .collection('shops');
+    final shopsSnap = await shopsCol.get();
+    for (final shopDoc in shopsSnap.docs) {
+      await _deleteDocsByQuery(shopDoc.reference.collection('sales'));
+      await shopDoc.reference.delete();
+    }
+  }
+
+  Future<void> _deleteDailyAssignments(
+    FirebaseFirestore firestore,
+    String tsaId,
+  ) async {
+    final dailyCol = firestore
+        .collection('seedTsas')
+        .doc(tsaId)
+        .collection('dailyAssignments');
+    final daySnap = await dailyCol.get();
+    for (final dayDoc in daySnap.docs) {
+      await _deleteDocsByQuery(dayDoc.reference.collection('shops'));
+      await dayDoc.reference.delete();
+    }
+  }
+
+  Future<void> _deleteDutiesAndVisitsForDsf(
+    FirebaseFirestore firestore,
+    String dsfId,
+  ) async {
+    final dutiesSnap = await firestore
+        .collection('duties')
+        .where('dsfId', isEqualTo: dsfId)
+        .get();
+    for (final dutyDoc in dutiesSnap.docs) {
+      await _deleteDocsByQuery(dutyDoc.reference.collection('shopVisits'));
+      await dutyDoc.reference.delete();
+    }
+  }
+
+  Future<void> _deleteLocationSessionsForDsf(
+    FirebaseFirestore firestore,
+    String dsfId,
+  ) async {
+    final sessionsSnap = await firestore
+        .collection('locationSessions')
+        .where('dsfId', isEqualTo: dsfId)
+        .get();
+    for (final sessionDoc in sessionsSnap.docs) {
+      await _deleteDocsByQuery(sessionDoc.reference.collection('points'));
+      await sessionDoc.reference.delete();
+    }
+  }
+
+  Future<void> _deleteTsaEverywhere(String tsaId) async {
+    final firestore = FirebaseFirestore.instance;
+
+    final dsfIdsToPurge = <String>{tsaId};
+    final dsfAccountRefs = <DocumentReference<Map<String, dynamic>>>{};
+
+    final directDsfRef = firestore.collection('dsfAccounts').doc(tsaId);
+    final directDsfSnap = await directDsfRef.get();
+    if (directDsfSnap.exists) {
+      dsfAccountRefs.add(directDsfRef);
+      final uid = (directDsfSnap.data()?['uid'] as String?)?.trim();
+      if (uid != null && uid.isNotEmpty) {
+        dsfIdsToPurge.add(uid);
+      }
+    }
+
+    final byTsaSnap = await firestore
+        .collection('dsfAccounts')
+        .where('tsaId', isEqualTo: tsaId)
+        .get();
+    for (final doc in byTsaSnap.docs) {
+      dsfAccountRefs.add(doc.reference);
+      final docId = doc.id.trim();
+      if (docId.isNotEmpty) dsfIdsToPurge.add(docId);
+      final uid = (doc.data()['uid'] as String?)?.trim();
+      if (uid != null && uid.isNotEmpty) dsfIdsToPurge.add(uid);
+    }
+
+    final accountService = DsfAccountService(firestore);
+    for (final accountRef in dsfAccountRefs) {
+      try {
+        await accountService.deleteAccount(tsaId: accountRef.id);
+      } catch (_) {
+        // Continue cascading cleanup even if auth deletion fails.
+      }
+      await accountRef.delete();
+    }
+
+    for (final dsfId in dsfIdsToPurge) {
+      await firestore.collection('users').doc(dsfId).delete();
+      await _deleteDutiesAndVisitsForDsf(firestore, dsfId);
+      await _deleteLocationSessionsForDsf(firestore, dsfId);
+      await _deleteDocsByQuery(
+        firestore.collection('alerts').where('dsfId', isEqualTo: dsfId),
+      );
+      await _deleteDocsByQuery(
+        firestore.collection('shops').where('assignedDsfId', isEqualTo: dsfId),
+      );
+      await _deleteDocsByQuery(
+        firestore.collection('shops').where('assignedDsfUid', isEqualTo: dsfId),
+      );
+      await _deleteDocsByQuery(
+        firestore.collection('reportFiles').where('dsfId', isEqualTo: dsfId),
+      );
+    }
+
+    await _deleteDocsByQuery(
+      firestore.collectionGroup('shopVisits').where('tsaId', isEqualTo: tsaId),
+    );
+
+    await _deleteShopSalesAndShops(firestore, tsaId);
+    await _deleteDailyAssignments(firestore, tsaId);
+
+    await firestore.collection('seedTsas').doc(tsaId).delete();
+    await firestore.collection('distributors').doc(tsaId).delete();
+  }
+
   void _goToAdminDashboard() {
     Get.offAllNamed(AppRoutes.adminDashboard);
   }
@@ -120,10 +264,11 @@ class TsaListPage extends StatelessWidget {
     final authController = Get.find<AuthController>();
     final col = FirebaseFirestore.instance.collection('seedTsas');
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
         _goToAdminDashboard();
-        return false;
       },
       child: Scaffold(
         appBar: AppBar(
@@ -243,9 +388,8 @@ class TsaListPage extends StatelessWidget {
                               builder: (context) => AlertDialog(
                                 title: const Text('Delete TSA'),
                                 content: Text(
-                                  'Delete "$name"?\n\n'
-                                  'Note: This removes only the TSA document. '
-                                  'Subcollections (shops/assignments) are not deleted.',
+                                  'Delete "$name" completely?\n\n'
+                                  'This removes TSA, DSF account, shops, assignments, duties, alerts, and related records.',
                                 ),
                                 actions: [
                                   TextButton(
@@ -256,17 +400,26 @@ class TsaListPage extends StatelessWidget {
                                   ElevatedButton(
                                     onPressed: () =>
                                         Navigator.of(context).pop(true),
-                                    child: const Text('Delete'),
+                                    child: const Text('Delete All'),
                                   ),
                                 ],
                               ),
                             );
-                            if (ok == true) {
-                              await col.doc(doc.id).delete();
+                            if (ok != true) return;
+
+                            try {
+                              await _deleteTsaEverywhere(doc.id);
                               if (!context.mounted) return;
                               Get.snackbar(
                                 'Deleted',
-                                'TSA "$name" removed',
+                                'TSA "$name" and all related data removed.',
+                                snackPosition: SnackPosition.BOTTOM,
+                              );
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              Get.snackbar(
+                                'Delete failed',
+                                e.toString(),
                                 snackPosition: SnackPosition.BOTTOM,
                               );
                             }

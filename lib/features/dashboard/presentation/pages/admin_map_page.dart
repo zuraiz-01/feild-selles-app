@@ -148,191 +148,225 @@ class _AdminMapPageState extends State<AdminMapPage> {
 
                 return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                   stream: FirebaseFirestore.instance
-                      .collection('dsfAccounts')
+                      .collection('seedTsas')
                       .snapshots(),
-                  builder: (context, dsfSnap) {
-                    if (dsfSnap.hasError) {
-                      return Center(child: Text(dsfSnap.error.toString()));
+                  builder: (context, tsaSnap) {
+                    if (tsaSnap.hasError) {
+                      return Center(child: Text(tsaSnap.error.toString()));
                     }
-                    if (!dsfSnap.hasData) {
+                    if (!tsaSnap.hasData) {
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    final validDsfIds = <String>{};
-                    for (final dsfDoc in dsfSnap.data!.docs) {
-                      final dsfAccountId = dsfDoc.id.trim();
-                      if (dsfAccountId.isNotEmpty) {
-                        validDsfIds.add(dsfAccountId);
-                      }
-                      final uid = (dsfDoc.data()['uid'] as String?)?.trim();
-                      if (uid != null && uid.isNotEmpty) {
-                        validDsfIds.add(uid);
-                      }
-                    }
+                    final tsaIds = tsaSnap.data!.docs
+                        .map((doc) => doc.id.trim())
+                        .where((id) => id.isNotEmpty)
+                        .toSet();
 
-                    activeByDsf.removeWhere(
-                      (dsfId, _) => !validDsfIds.contains(dsfId),
-                    );
+                    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('dsfAccounts')
+                          .snapshots(),
+                      builder: (context, dsfSnap) {
+                        if (dsfSnap.hasError) {
+                          return Center(child: Text(dsfSnap.error.toString()));
+                        }
+                        if (!dsfSnap.hasData) {
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
+                        }
 
-                    final recentByDsf = <String, _RecentUserActivity>{};
-                    for (final doc in alertsSnap.data!.docs) {
-                      final data = doc.data();
-                      final dsfId = (data['dsfId'] as String?)?.trim();
-                      if (dsfId == null || dsfId.isEmpty) continue;
-                      if (!validDsfIds.contains(dsfId)) continue;
-                      if (recentByDsf.containsKey(dsfId)) continue;
-                      recentByDsf[dsfId] = _RecentUserActivity(
-                        dsfId: dsfId,
-                        type: (data['type'] as String?)?.trim(),
-                        createdAt: _toDate(data['createdAt']),
-                        shopTitle: (data['shopTitle'] as String?)?.trim(),
-                        locationLabel: (data['locationLabel'] as String?)
-                            ?.trim(),
-                        distanceMeters: (data['distanceMeters'] as num?)
-                            ?.toDouble(),
-                      );
-                    }
+                        final validDsfIds = <String>{};
+                        for (final dsfDoc in dsfSnap.data!.docs) {
+                          final data = dsfDoc.data();
+                          final dsfAccountId = dsfDoc.id.trim();
+                          final linkedTsaId =
+                              (data['tsaId'] as String?)?.trim() ??
+                              dsfAccountId;
+                          if (!tsaIds.contains(linkedTsaId)) continue;
 
-                    final options = <String>[];
-                    options.addAll(recentByDsf.keys);
-                    for (final dsfId in activeByDsf.keys) {
-                      if (!options.contains(dsfId)) {
-                        options.add(dsfId);
-                      }
-                    }
+                          if (dsfAccountId.isNotEmpty) {
+                            validDsfIds.add(dsfAccountId);
+                          }
+                          final uid = (data['uid'] as String?)?.trim();
+                          if (uid != null && uid.isNotEmpty) {
+                            validDsfIds.add(uid);
+                          }
+                        }
 
-                    if (options.isEmpty) {
-                      return const Center(
-                        child: Text('No activity for existing DSFs yet.'),
-                      );
-                    }
+                        activeByDsf.removeWhere(
+                          (dsfId, _) => !validDsfIds.contains(dsfId),
+                        );
 
-                    _ensureSelection(options);
-                    final selectedId = _selectedDsfId ?? options.first;
-                    final active = activeByDsf[selectedId];
-                    final recent = recentByDsf[selectedId];
-                    final inactiveCount = (options.length - activeByDsf.length)
-                        .clamp(0, options.length);
+                        final recentByDsf = <String, _RecentUserActivity>{};
+                        for (final doc in alertsSnap.data!.docs) {
+                          final data = doc.data();
+                          final dsfId = (data['dsfId'] as String?)?.trim();
+                          if (dsfId == null || dsfId.isEmpty) continue;
+                          if (!validDsfIds.contains(dsfId)) continue;
+                          if (recentByDsf.containsKey(dsfId)) continue;
+                          recentByDsf[dsfId] = _RecentUserActivity(
+                            dsfId: dsfId,
+                            type: (data['type'] as String?)?.trim(),
+                            createdAt: _toDate(data['createdAt']),
+                            shopTitle: (data['shopTitle'] as String?)?.trim(),
+                            locationLabel: (data['locationLabel'] as String?)
+                                ?.trim(),
+                            distanceMeters: (data['distanceMeters'] as num?)
+                                ?.toDouble(),
+                          );
+                        }
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        GlassCard(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        final options = <String>[];
+                        options.addAll(recentByDsf.keys);
+                        for (final dsfId in activeByDsf.keys) {
+                          if (!options.contains(dsfId)) {
+                            options.add(dsfId);
+                          }
+                        }
+
+                        if (options.isEmpty) {
+                          return const Center(
+                            child: Text('No activity for existing DSFs yet.'),
+                          );
+                        }
+
+                        _ensureSelection(options);
+                        final selectedId = _selectedDsfId ?? options.first;
+                        final active = activeByDsf[selectedId];
+                        final recent = recentByDsf[selectedId];
+                        final inactiveCount =
+                            (options.length - activeByDsf.length).clamp(
+                              0,
+                              options.length,
+                            );
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            GlassCard(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    height: 42,
-                                    width: 42,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.accentSoft,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    child: const Icon(
-                                      Icons.person_pin_circle_outlined,
-                                      color: AppTheme.accent,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  const Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Live Users',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                            color: AppTheme.ink,
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        height: 42,
+                                        width: 42,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.accentSoft,
+                                          borderRadius: BorderRadius.circular(
+                                            14,
                                           ),
                                         ),
-                                        SizedBox(height: 2),
-                                        Text(
-                                          'Pick a user to inspect map, alerts, and actions.',
-                                          style: TextStyle(
-                                            color: AppTheme.mutedInk,
-                                            fontSize: 12,
-                                          ),
+                                        child: const Icon(
+                                          Icons.person_pin_circle_outlined,
+                                          color: AppTheme.accent,
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _TopStatChip(
-                                    icon: Icons.route_outlined,
-                                    label: 'Active',
-                                    value: '${activeByDsf.length}',
-                                  ),
-                                  _TopStatChip(
-                                    icon: Icons.notifications_active_outlined,
-                                    label: 'Alerts',
-                                    value: '${recentByDsf.length}',
-                                  ),
-                                  _TopStatChip(
-                                    icon: Icons.people_outline,
-                                    label: 'Idle',
-                                    value: '$inactiveCount',
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                height: 98,
-                                child: ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: options.length,
-                                  separatorBuilder: (_, __) =>
+                                      ),
                                       const SizedBox(width: 10),
-                                  itemBuilder: (context, index) {
-                                    final dsfId = options[index];
-                                    return StreamBuilder<String>(
-                                      stream: _dsfNameStream(dsfId),
-                                      builder: (context, nameSnap) {
-                                        final name = nameSnap.data ?? dsfId;
-                                        return _UserPickerChip(
-                                          name: name,
-                                          subtitle:
-                                              recentByDsf[dsfId]?.title ??
-                                              'No recent alert',
-                                          isActive: activeByDsf.containsKey(
-                                            dsfId,
-                                          ),
-                                          selected: dsfId == selectedId,
-                                          onTap: () {
-                                            setState(
-                                              () => _selectedDsfId = dsfId,
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Live Users',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                color: AppTheme.ink,
+                                              ),
+                                            ),
+                                            SizedBox(height: 2),
+                                            Text(
+                                              'Pick a user to inspect map, alerts, and actions.',
+                                              style: TextStyle(
+                                                color: AppTheme.mutedInk,
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _TopStatChip(
+                                        icon: Icons.route_outlined,
+                                        label: 'Active',
+                                        value: '${activeByDsf.length}',
+                                      ),
+                                      _TopStatChip(
+                                        icon:
+                                            Icons.notifications_active_outlined,
+                                        label: 'Alerts',
+                                        value: '${recentByDsf.length}',
+                                      ),
+                                      _TopStatChip(
+                                        icon: Icons.people_outline,
+                                        label: 'Idle',
+                                        value: '$inactiveCount',
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SizedBox(
+                                    height: 98,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: options.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(width: 10),
+                                      itemBuilder: (context, index) {
+                                        final dsfId = options[index];
+                                        return StreamBuilder<String>(
+                                          stream: _dsfNameStream(dsfId),
+                                          builder: (context, nameSnap) {
+                                            final name = nameSnap.data ?? dsfId;
+                                            return _UserPickerChip(
+                                              name: name,
+                                              subtitle:
+                                                  recentByDsf[dsfId]?.title ??
+                                                  'No recent alert',
+                                              isActive: activeByDsf.containsKey(
+                                                dsfId,
+                                              ),
+                                              selected: dsfId == selectedId,
+                                              onTap: () {
+                                                setState(
+                                                  () => _selectedDsfId = dsfId,
+                                                );
+                                              },
                                             );
                                           },
                                         );
                                       },
-                                    );
-                                  },
-                                ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(
-                          child: _SelectedUserView(
-                            dsfId: selectedId,
-                            active: active,
-                            recent: recent,
-                            pointFromMap: _latLngFromMap,
-                            dateFromRaw: _toDate,
-                          ),
-                        ),
-                      ],
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: _SelectedUserView(
+                                dsfId: selectedId,
+                                active: active,
+                                recent: recent,
+                                pointFromMap: _latLngFromMap,
+                                dateFromRaw: _toDate,
+                              ),
+                            ),
+                          ],
+                        );
+                      },
                     );
                   },
                 );
