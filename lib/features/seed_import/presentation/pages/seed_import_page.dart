@@ -15,6 +15,11 @@ class SeedImportPage extends GetView<SeedImportController> {
     final authController = Get.find<AuthController>();
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
         titleSpacing: 20,
         toolbarHeight: 70,
         title: Row(

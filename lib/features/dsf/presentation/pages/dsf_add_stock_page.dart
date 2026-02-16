@@ -16,6 +16,9 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
   final _searchController = TextEditingController();
   final _qtyController = TextEditingController();
   String _selectedProductName = '';
+  String _selectedProductUnit = '';
+  final List<Map<String, dynamic>> _stocks = [];
+  bool _loadedExisting = false;
 
   @override
   void dispose() {
@@ -28,13 +31,13 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
   Widget build(BuildContext context) {
     final args = (Get.arguments as Map?)?.cast<String, dynamic>() ?? const {};
     final existingRaw = args['existing'];
-    final existing = <Map<String, dynamic>>[];
-    if (existingRaw is List) {
+    if (!_loadedExisting && existingRaw is List) {
       for (final item in existingRaw) {
         if (item is Map) {
-          existing.add(item.cast<String, dynamic>());
+          _stocks.add(item.cast<String, dynamic>());
         }
       }
+      _loadedExisting = true;
     }
 
     final products = FirebaseFirestore.instance
@@ -46,7 +49,7 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
         title: const Text('Add Current Stock'),
         actions: [
           TextButton(
-            onPressed: () => Get.back(result: existing),
+            onPressed: () => Get.back(result: _stocks),
             child: const Text('Done'),
           ),
         ],
@@ -95,9 +98,11 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
                       final data = doc.data();
                       final name = (data['name'] as String?) ?? doc.id;
                       final sku = (data['sku'] as String?) ?? doc.id;
+                      final unit = (data['unit'] as String?)?.trim() ?? '';
                       final price = (data['price'] as num?)?.toDouble();
                       final details = <String>[
                         if (sku.isNotEmpty) 'SKU: $sku',
+                        if (unit.isNotEmpty) 'Unit: $unit',
                         if (price != null)
                           'Rate: ${price.toStringAsFixed(0)}',
                       ];
@@ -121,24 +126,39 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
                           onTap: () async {
                             setState(() {
                               _selectedProductName = name;
+                              _selectedProductUnit = unit;
                               _qtyController.clear();
                             });
                             final ok = await _openQtyDialog(context);
                             if (ok != true) return;
                             final qtyRaw = _qtyController.text.trim();
                             if (qtyRaw.isEmpty) return;
-                            final next = [
-                              ...existing.where(
-                                (e) => e['productId']?.toString() != doc.id,
-                              ),
-                              {
+                            final parsed = double.tryParse(qtyRaw);
+                            if (parsed == null) {
+                              Get.snackbar(
+                                'Error adding product',
+                                'Please enter a valid quantity.',
+                                snackPosition: SnackPosition.BOTTOM,
+                              );
+                              return;
+                            }
+                            setState(() {
+                              _stocks.removeWhere(
+                                (e) => e['productId']?.toString() == doc.id,
+                              );
+                              _stocks.add({
                                 'productId': doc.id,
                                 'productName': name,
-                                'quantity': double.tryParse(qtyRaw) ?? qtyRaw,
-                              },
-                            ];
-                            if (!mounted) return;
-                            Get.back(result: next);
+                                'quantity': parsed,
+                                if (_selectedProductUnit.isNotEmpty)
+                                  'unit': _selectedProductUnit,
+                              });
+                            });
+                            Get.snackbar(
+                              'Added',
+                              '$name ${parsed.toStringAsFixed(0)}${_selectedProductUnit.isNotEmpty ? ' ${_selectedProductUnit}' : ''}',
+                              snackPosition: SnackPosition.BOTTOM,
+                            );
                           },
                         ),
                       );
@@ -161,12 +181,19 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
           title: Text(
             _selectedProductName.isEmpty
                 ? 'Add quantity'
-                : 'Add quantity • $_selectedProductName',
+                : _selectedProductUnit.isEmpty
+                    ? 'Add quantity • $_selectedProductName'
+                    : 'Add quantity • $_selectedProductName (${_selectedProductUnit})',
           ),
           content: TextField(
             controller: _qtyController,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Quantity'),
+            decoration: InputDecoration(
+              labelText: 'Quantity',
+              suffixText: _selectedProductUnit.isNotEmpty
+                  ? _selectedProductUnit
+                  : null,
+            ),
           ),
           actions: [
             TextButton(
@@ -174,7 +201,27 @@ class _DsfAddStockPageState extends State<DsfAddStockPage> {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(true),
+              onPressed: () {
+                final qty = _qtyController.text.trim();
+                if (qty.isEmpty) {
+                  Get.snackbar(
+                    'Error adding product',
+                    'Please enter quantity.',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                  return;
+                }
+                final parsed = double.tryParse(qty);
+                if (parsed == null) {
+                  Get.snackbar(
+                    'Error adding product',
+                    'Please enter a valid quantity.',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                  return;
+                }
+                Navigator.of(context).pop(true);
+              },
               child: const Text('Save'),
             ),
           ],

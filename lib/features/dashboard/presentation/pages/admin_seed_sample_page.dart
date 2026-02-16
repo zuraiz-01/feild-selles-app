@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../products/data/models/product_model.dart';
 
@@ -19,7 +20,14 @@ class _AdminSeedSamplePageState extends State<AdminSeedSamplePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Seed Sample Data')),
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
+        title: const Text('Seed Sample Data'),
+      ),
       body: AppShell(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -62,8 +70,9 @@ class _AdminSeedSamplePageState extends State<AdminSeedSamplePage> {
       // Sample DSF
       const dsfId = 'dsf_demo';
       const dsfUid = 'dsf_demo_uid';
-      final dsfRef =
-          FirebaseFirestore.instance.collection('dsfAccounts').doc(dsfId);
+      final dsfRef = FirebaseFirestore.instance
+          .collection('dsfAccounts')
+          .doc(dsfId);
       batch.set(dsfRef, {
         'tsaId': dsfId,
         'uid': dsfUid,

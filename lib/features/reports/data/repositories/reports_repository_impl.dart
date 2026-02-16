@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import '../../domain/repositories/reports_repository.dart';
 import '../datasources/report_storage_ds.dart';
@@ -12,7 +12,7 @@ class ReportsRepositoryImpl implements ReportsRepository {
 
   @override
   Future<void> uploadDailyReportAndCreateMetadata({
-    required File file,
+    required Uint8List bytes,
     required String distributorId,
     required String dsfId,
     required String dateKey,
@@ -20,7 +20,7 @@ class ReportsRepositoryImpl implements ReportsRepository {
     String? sha256,
   }) async {
     await _storage.uploadDailyReport(
-      file: file,
+      bytes: bytes,
       distributorId: distributorId,
       dsfId: dsfId,
       dateKey: dateKey,

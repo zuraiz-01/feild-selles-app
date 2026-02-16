@@ -1,13 +1,17 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
-import 'package:path_provider/path_provider.dart';
 
 class ExcelExportResult {
-  final String filePath;
+  final String fileName;
+  final Uint8List bytes;
   final int sizeBytes;
 
-  const ExcelExportResult({required this.filePath, required this.sizeBytes});
+  const ExcelExportResult({
+    required this.fileName,
+    required this.bytes,
+    required this.sizeBytes,
+  });
 }
 
 class ExcelSheet {
@@ -61,12 +65,12 @@ class ExcelExporter {
     if (bytes == null) {
       throw StateError('Failed to encode excel');
     }
-
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/$fileName');
-    await file.writeAsBytes(bytes, flush: true);
-
-    return ExcelExportResult(filePath: file.path, sizeBytes: bytes.length);
+    final data = Uint8List.fromList(bytes);
+    return ExcelExportResult(
+      fileName: fileName,
+      bytes: data,
+      sizeBytes: data.length,
+    );
   }
 
   CellValue _cell(dynamic value) {

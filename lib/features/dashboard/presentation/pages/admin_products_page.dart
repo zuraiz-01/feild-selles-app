@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../products/data/models/product_model.dart';
@@ -14,6 +15,11 @@ class AdminProductsPage extends StatelessWidget {
     final productsCol = FirebaseFirestore.instance.collection('products');
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
         titleSpacing: 20,
         toolbarHeight: 70,
         title: Row(
@@ -135,14 +141,57 @@ class AdminProductsPage extends StatelessWidget {
                           ],
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => _openForm(
-                          context,
-                          productsCol: productsCol,
-                          existingId: doc.id,
-                          existing: doc.data(),
-                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Delete product',
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.redAccent,
+                            ),
+                            onPressed: () async {
+                              final ok = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Delete product'),
+                                  content: Text(
+                                    'Delete "${product.name}"? This cannot be undone.',
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(false),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(true),
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (ok != true) return;
+                              await productsCol.doc(doc.id).delete();
+                              if (!context.mounted) return;
+                              Get.snackbar(
+                                'Deleted',
+                                'Product ${product.name} deleted',
+                                snackPosition: SnackPosition.BOTTOM,
+                              );
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _openForm(
+                              context,
+                              productsCol: productsCol,
+                              existingId: doc.id,
+                              existing: doc.data(),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -224,33 +273,46 @@ class AdminProductsPage extends StatelessWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 14, 24, 4),
           title: Text(existingId == null ? 'Add product' : 'Edit product'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Product Name'),
-                ),
-                TextField(
-                  controller: skuController,
-                  decoration: const InputDecoration(
-                    labelText: 'Product Code / SKU',
+            child: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Product Name',
+                    ),
                   ),
-                  readOnly: isEditing,
-                ),
-                TextField(
-                  controller: rateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Rate',
-                    prefixText: 'Rs ',
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: skuController,
+                    decoration: InputDecoration(
+                      labelText: 'Product Code / SKU',
+                      helperText: isEditing
+                          ? 'SKU cannot be changed after create.'
+                          : null,
+                    ),
+                    readOnly: isEditing,
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: rateController,
+                    decoration: const InputDecoration(
+                      labelText: 'Rate',
+                      prefixText: 'Rs ',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           actions: [

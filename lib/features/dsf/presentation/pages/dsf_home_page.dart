@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/logged_in_name_text.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../duty/presentation/controllers/duty_controller.dart';
@@ -14,10 +16,23 @@ class DsfHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final dutyController = Get.find<DutyController>();
     final authController = Get.find<AuthController>();
+    final todayLabel = DateFormat('EEEE, dd MMM yyyy').format(DateTime.now());
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('DSF'),
+        toolbarHeight: 70,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('DSF Panel', style: TextStyle(fontWeight: FontWeight.w700)),
+            SizedBox(height: 2),
+            LoggedInNameText(
+              prefix: 'Hi, ',
+              fallback: 'DSF',
+              style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: () => authController.logout(),
@@ -27,8 +42,7 @@ class DsfHomePage extends StatelessWidget {
       ),
       body: AppShell(
         child: GetBuilder<DutyController>(
-          builder: (_) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          builder: (_) => ListView(
             children: [
               const SectionTitle(
                 title: 'Today',
@@ -54,11 +68,14 @@ class DsfHomePage extends StatelessWidget {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.directions_walk, color: AppTheme.sky),
+                          const Icon(
+                            Icons.calendar_today_outlined,
+                            color: AppTheme.sky,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              'Active Duty: ${dutyController.activeDutyId ?? 'Not started'}',
+                              'Today: $todayLabel',
                               style: Theme.of(context).textTheme.titleMedium,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -68,22 +85,15 @@ class DsfHomePage extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    if (dutyController.activeDutyId != null) ...[
-                      OutlinedButton.icon(
-                        onPressed: () => Get.toNamed(AppRoutes.dsfShops),
-                        icon: const Icon(Icons.storefront),
-                        label: const Text('Shops to Visit'),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
                     OutlinedButton.icon(
-                      onPressed: () => Get.toNamed(AppRoutes.dsfProducts),
-                      icon: const Icon(Icons.inventory_2_outlined),
-                      label: const Text('Update Product Details'),
+                      onPressed: () => Get.toNamed(AppRoutes.dsfShops),
+                      icon: const Icon(Icons.storefront),
+                      label: const Text('Shops to Visit'),
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
-                      onPressed: dutyController.isLoading.value ||
+                      onPressed:
+                          dutyController.isLoading.value ||
                               dutyController.activeDutyId != null
                           ? null
                           : dutyController.startDuty,
@@ -97,19 +107,12 @@ class DsfHomePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     ElevatedButton(
-                      onPressed: dutyController.isLoading.value ||
+                      onPressed:
+                          dutyController.isLoading.value ||
                               dutyController.activeDutyId == null
                           ? null
                           : () => dutyController.endDuty(uploadReport: true),
-                      child: const Text('End Duty (Upload Report)'),
-                    ),
-                    const SizedBox(height: 12),
-                    OutlinedButton(
-                      onPressed: dutyController.isLoading.value ||
-                              dutyController.activeDutyId == null
-                          ? null
-                          : () => dutyController.endDuty(uploadReport: false),
-                      child: const Text('End Duty (Local Only)'),
+                      child: const Text('End Duty'),
                     ),
                   ],
                 ),

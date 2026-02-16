@@ -111,130 +111,183 @@ class TsaListPage extends StatelessWidget {
     );
   }
 
+  void _goToAdminDashboard() {
+    Get.offAllNamed(AppRoutes.adminDashboard);
+  }
+
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
     final col = FirebaseFirestore.instance.collection('seedTsas');
 
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        toolbarHeight: 70,
-        title: Row(
-          children: [
-            Container(
-              height: 42,
-              width: 42,
-              decoration: BoxDecoration(
-                color: AppTheme.warmSoft,
-                borderRadius: BorderRadius.circular(14),
+    return WillPopScope(
+      onWillPop: () async {
+        _goToAdminDashboard();
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            onPressed: _goToAdminDashboard,
+            icon: const Icon(Icons.arrow_back),
+            tooltip: 'Back to dashboard',
+          ),
+          titleSpacing: 20,
+          toolbarHeight: 70,
+          title: Row(
+            children: [
+              Container(
+                height: 42,
+                width: 42,
+                decoration: BoxDecoration(
+                  color: AppTheme.warmSoft,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.groups, color: AppTheme.accent),
               ),
-              child: const Icon(Icons.groups, color: AppTheme.accent),
+              const SizedBox(width: 10),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'TSAs',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Seeded accounts',
+                    style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              onPressed: () => authController.logout(),
+              icon: const Icon(Icons.logout),
+              tooltip: 'Logout',
             ),
-            const SizedBox(width: 10),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'TSAs',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Seeded accounts',
-                  style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
-                ),
-              ],
-            ),
+            const SizedBox(width: 8),
           ],
         ),
-        actions: [
-          IconButton(
-            onPressed: () => authController.logout(),
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _createTsa(context),
-        child: const Icon(Icons.add),
-      ),
-      body: AppShell(
-        child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: col.orderBy('name').snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Center(child: Text(snapshot.error.toString()));
-            }
-            if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            final docs = snapshot.data!.docs;
-            if (docs.isEmpty) {
-              return const Center(
-                child: Text('No TSA data. Import Excel first.'),
-              );
-            }
-
-            return ListView.separated(
-              itemCount: docs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final doc = docs[index];
-                final data = doc.data();
-                final name = (data['name'] as String?) ?? doc.id;
-                final sheetName = (data['sheetName'] as String?) ?? '';
-
-                return GlassCard(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        height: 48,
-                        width: 48,
-                        decoration: BoxDecoration(
-                          color: AppTheme.skySoft,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Icon(Icons.person, color: AppTheme.sky),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              name,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            if (sheetName.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                sheetName,
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => Get.toNamed(
-                          AppRoutes.seedTsaAccount,
-                          arguments: {'tsaId': doc.id, 'tsaName': name},
-                        ),
-                        icon: const Icon(Icons.arrow_forward_ios, size: 18),
-                      ),
-                    ],
-                  ),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _createTsa(context),
+          child: const Icon(Icons.add),
+        ),
+        body: AppShell(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: col.orderBy('name').snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text(snapshot.error.toString()));
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) {
+                return const Center(
+                  child: Text('No TSA data. Import Excel first.'),
                 );
-              },
-            );
-          },
+              }
+
+              return ListView.separated(
+                itemCount: docs.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+                  final data = doc.data();
+                  final name = (data['name'] as String?) ?? doc.id;
+                  final sheetName = (data['sheetName'] as String?) ?? '';
+
+                  return GlassCard(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 48,
+                          width: 48,
+                          decoration: BoxDecoration(
+                            color: AppTheme.skySoft,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(Icons.person, color: AppTheme.sky),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              if (sheetName.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  sheetName,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Delete TSA'),
+                                content: Text(
+                                  'Delete "$name"?\n\n'
+                                  'Note: This removes only the TSA document. '
+                                  'Subcollections (shops/assignments) are not deleted.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(true),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              await col.doc(doc.id).delete();
+                              if (!context.mounted) return;
+                              Get.snackbar(
+                                'Deleted',
+                                'TSA "$name" removed',
+                                snackPosition: SnackPosition.BOTTOM,
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                          tooltip: 'Delete',
+                        ),
+                        IconButton(
+                          onPressed: () => Get.toNamed(
+                            AppRoutes.seedTsaAccount,
+                            arguments: {'tsaId': doc.id, 'tsaName': name},
+                          ),
+                          icon: const Icon(Icons.arrow_forward_ios, size: 18),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );

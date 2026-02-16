@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/logged_in_name_text.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
@@ -14,7 +15,19 @@ class DistributorDashboardPage extends StatelessWidget {
     final authController = Get.find<AuthController>();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Distributor'),
+        toolbarHeight: 70,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Text('Distributor', style: TextStyle(fontWeight: FontWeight.w700)),
+            SizedBox(height: 2),
+            LoggedInNameText(
+              prefix: 'Hi, ',
+              fallback: 'Distributor',
+              style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: () => authController.logout(),
@@ -55,7 +68,10 @@ class DistributorDashboardPage extends StatelessWidget {
                       color: AppTheme.accentSoft,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: const Icon(Icons.track_changes, color: AppTheme.accent),
+                    child: const Icon(
+                      Icons.track_changes,
+                      color: AppTheme.accent,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   const Expanded(

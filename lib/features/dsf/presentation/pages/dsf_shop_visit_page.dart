@@ -40,6 +40,11 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   String? _error;
   bool _isSaving = false;
 
+  void _setStateSafe(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -74,9 +79,9 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       final rad = (geo is Map && geo['radiusMeters'] is num)
           ? (geo['radiusMeters'] as num).toDouble()
           : null;
-      setState(() => _requiredDistanceMeters = rad ?? 120);
+      _setStateSafe(() => _requiredDistanceMeters = rad ?? 120);
     } catch (_) {
-      setState(() => _requiredDistanceMeters = 120);
+      _setStateSafe(() => _requiredDistanceMeters = 120);
     }
   }
 
@@ -84,7 +89,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() => _error = 'Location service is off.');
+        _setStateSafe(() => _error = 'Location service is off.');
         return;
       }
       var permission = await Geolocator.checkPermission();
@@ -93,7 +98,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        setState(() => _error = 'Location permission denied.');
+        _setStateSafe(() => _error = 'Location permission denied.');
         return;
       }
       final settings = const LocationSettings(
@@ -102,19 +107,21 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       );
       _posSub = Geolocator.getPositionStream(locationSettings: settings).listen(
         (pos) {
+          if (!mounted) return;
           setState(() {
             _position = pos;
             _error = null;
           });
         },
-        onError: (_) => setState(() => _error = 'Unable to track location.'),
+        onError: (_) =>
+            _setStateSafe(() => _error = 'Unable to track location.'),
       );
       final initial = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      setState(() => _position = initial);
+      _setStateSafe(() => _position = initial);
     } catch (_) {
-      setState(() => _error = 'Unable to access location.');
+      _setStateSafe(() => _error = 'Unable to access location.');
     }
   }
 
@@ -134,6 +141,29 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     final m = (total ~/ 60).toString().padLeft(2, '0');
     final s = (total % 60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  String _formatDateTime(DateTime dateTime) {
+    final local = dateTime.toLocal();
+    final y = local.year.toString().padLeft(4, '0');
+    final m = _twoDigits(local.month);
+    final d = _twoDigits(local.day);
+    final hh = _twoDigits(local.hour);
+    final mm = _twoDigits(local.minute);
+    return '$y-$m-$d $hh:$mm';
+  }
+
+  DateTime? _readDate(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate();
+    if (raw is String) return DateTime.tryParse(raw);
+    return null;
+  }
+
+  bool _isVisitSubmitted(Map<String, dynamic>? visitData) {
+    if (visitData == null) return false;
+    return visitData['submittedAt'] != null;
   }
 
   double? _distanceToShopMeters(Map<String, dynamic>? shopData) {
@@ -177,7 +207,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         normalized.add(item.cast<String, dynamic>());
       }
     }
-    setState(() => _orders = normalized);
+    _setStateSafe(() => _orders = normalized);
   }
 
   Future<void> _openStockDialog() async {
@@ -190,7 +220,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     for (final item in result) {
       if (item is Map) normalized.add(item.cast<String, dynamic>());
     }
-    setState(() {
+    _setStateSafe(() {
       _stockItems = normalized;
       _hasStock = _stockItems.isNotEmpty;
       _stockController.text = _stockItems.length.toString();
@@ -278,7 +308,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       },
     );
     if (ok == true) {
-      setState(() {
+      _setStateSafe(() {
         _paymentType = paymentType;
         _chequeImage = chequeImage;
         _paymentController.text = amountController.text.trim();
@@ -379,6 +409,22 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         if (pos != null)
           'submittedLocation': {'lat': pos.latitude, 'lng': pos.longitude},
       }, SetOptions(merge: true));
+      try {
+        await FirebaseFirestore.instance.collection('alerts').add({
+          'type': 'shop_visit',
+          'dutyId': dutyId,
+          'dsfId': dsfId,
+          'distributorId': distributorId,
+          'shopId': shopId,
+          'shopTitle': shopTitle,
+          if (distanceMeters != null) 'distanceMeters': distanceMeters,
+          if (pos != null) 'lat': pos.latitude,
+          if (pos != null) 'lng': pos.longitude,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      } catch (_) {
+        // ignore alert logging failures
+      }
       Get.snackbar(
         'Saved',
         'Visit submitted.',
@@ -422,6 +468,11 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
               .collection('shops')
               .doc(shopId)
         : FirebaseFirestore.instance.collection('shops').doc(shopId);
+    final visitRef = FirebaseFirestore.instance
+        .collection('duties')
+        .doc(dutyId)
+        .collection('shopVisits')
+        .doc(shopId);
 
     return Scaffold(
       appBar: AppBar(title: Text(shopTitle)),
@@ -441,200 +492,251 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                 (shopData?['discountPct'] as num?)?.toDouble() ??
                 (filer ? 0.05 : 0.025);
             final distanceMeters = _distanceToShopMeters(shopData);
-            _maybeStartTimer(distanceMeters);
 
-            final hasLocation = shopData?['location'] is Map;
-            final canSubmit =
-                hasLocation &&
-                _elapsed() >= _minVisitDuration &&
-                _isInside(distanceMeters) &&
-                !_isSaving;
+            return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+              stream: visitRef.snapshots(),
+              builder: (context, visitSnapshot) {
+                if (visitSnapshot.hasError) {
+                  return Center(child: Text(visitSnapshot.error.toString()));
+                }
+                final visitData = visitSnapshot.data?.data();
+                final alreadySubmitted = _isVisitSubmitted(visitData);
+                final submittedAt = _readDate(visitData?['submittedAt']);
+                if (!alreadySubmitted) {
+                  _maybeStartTimer(distanceMeters);
+                }
 
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                GlassCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        filer
-                            ? 'Filer shop (5% discount)'
-                            : 'Non-filer (2.5% discount)',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      if (!hasLocation)
-                        const Text(
-                          'Shop location is missing. Ask admin to set location on map.',
-                          style: TextStyle(color: Color(0xFFD05353)),
-                        )
-                      else ...[
-                        Text(
-                          _position == null
-                              ? 'Getting your location...'
-                              : 'Distance: ${distanceMeters?.toStringAsFixed(0) ?? '--'} m',
-                          style: const TextStyle(color: AppTheme.mutedInk),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
+                final hasLocation = shopData?['location'] is Map;
+                final actionsEnabled =
+                    !alreadySubmitted &&
+                    _elapsed() >= _minVisitDuration &&
+                    !_isSaving;
+                final canSubmit =
+                    !alreadySubmitted &&
+                    hasLocation &&
+                    _elapsed() >= _minVisitDuration &&
+                    _isInside(distanceMeters) &&
+                    !_isSaving;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    GlassCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            filer
+                                ? 'Filer shop (5% discount)'
+                                : 'Non-filer (2.5% discount)',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          if (alreadySubmitted)
                             Container(
+                              width: double.infinity,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
+                                horizontal: 12,
+                                vertical: 10,
                               ),
                               decoration: BoxDecoration(
-                                color: _isInside(distanceMeters)
-                                    ? AppTheme.accentSoft
-                                    : AppTheme.warmSoft,
-                                borderRadius: BorderRadius.circular(999),
+                                color: AppTheme.accentSoft,
+                                borderRadius: BorderRadius.circular(12),
                               ),
                               child: Text(
-                                _isInside(distanceMeters)
-                                    ? 'At shop'
-                                    : 'Move closer',
-                                style: TextStyle(
-                                  color: _isInside(distanceMeters)
-                                      ? AppTheme.ink
-                                      : AppTheme.ink,
+                                submittedAt == null
+                                    ? 'Visit already submitted. Actions are locked.'
+                                    : 'Visit already submitted on ${_formatDateTime(submittedAt)}. Actions are locked.',
+                                style: const TextStyle(
+                                  color: AppTheme.ink,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _visitStartedAt == null
-                                    ? 'Timer starts when you reach the shop.'
-                                    : 'Time left: ${_formatMmSs(_remaining())}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                      if (_error != null) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          _error!,
-                          style: const TextStyle(color: Color(0xFFD05353)),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      GlassCard(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
+                          if (alreadySubmitted) const SizedBox(height: 8),
+                          if (!hasLocation)
                             const Text(
-                              'Actions',
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                              'Shop location is missing. Ask admin to set location on map.',
+                              style: TextStyle(color: Color(0xFFD05353)),
+                            )
+                          else ...[
+                            Text(
+                              _position == null
+                                  ? 'Getting your location...'
+                                  : 'Distance: ${distanceMeters?.toStringAsFixed(0) ?? '--'} m',
+                              style: const TextStyle(color: AppTheme.mutedInk),
                             ),
-                            const SizedBox(height: 10),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _elapsed() >= _minVisitDuration
-                                    ? _openOrderPage
-                                    : null,
-                                child: const Text('Add order'),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _elapsed() >= _minVisitDuration
-                                    ? _openRecoveryDialog
-                                    : null,
-                                child: const Text('Add recovery'),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: _elapsed() >= _minVisitDuration
-                                    ? _openStockDialog
-                                    : null,
-                                child: const Text('Add current stock'),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            if (_orders.isNotEmpty)
-                              Text(
-                                'Orders added: ${_orders.length}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            if (_hasStock)
-                              Text(
-                                'Stock items: ${_stockItems.length}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            if (_paymentController.text.trim().isNotEmpty)
-                              Text(
-                                'Recovery: ${_paymentType.toUpperCase()} ${_paymentController.text}'
-                                '${_paymentType == 'cheque' && _chequeImage != null ? ' (photo attached)' : ''}',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            const SizedBox(height: 12),
-                            TextField(
-                              controller: _notesController,
-                              maxLines: 3,
-                              decoration: const InputDecoration(
-                                labelText: 'Notes (optional)',
-                              ),
-                              enabled: _elapsed() >= _minVisitDuration,
-                            ),
-                            const SizedBox(height: 16),
-                            ElevatedButton(
-                              onPressed: canSubmit
-                                  ? () => _saveVisit(
-                                      dutyId: dutyId,
-                                      dsfId: profile.uid,
-                                      distributorId: profile.distributorId,
-                                      tsaId: tsaId,
-                                      shopId: shopId,
-                                      shopTitle: shopTitle,
-                                      distanceMeters: distanceMeters,
-                                      filer: filer,
-                                      discountPct: discountPct,
-                                    )
-                                  : null,
-                              child: _isSaving
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Text(
-                                      _elapsed() < _minVisitDuration
-                                          ? 'Wait ${_formatMmSs(_remaining())}'
-                                          : 'Submit',
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _isInside(distanceMeters)
+                                        ? AppTheme.accentSoft
+                                        : AppTheme.warmSoft,
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    _isInside(distanceMeters)
+                                        ? 'At shop'
+                                        : 'Move closer',
+                                    style: TextStyle(
+                                      color: _isInside(distanceMeters)
+                                          ? AppTheme.ink
+                                          : AppTheme.ink,
+                                      fontWeight: FontWeight.w600,
                                     ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    _visitStartedAt == null
+                                        ? 'Timer starts when you reach the shop.'
+                                        : 'Time left: ${_formatMmSs(_remaining())}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                ),
+                              ],
                             ),
                           ],
-                        ),
+                          if (_error != null) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              _error!,
+                              style: const TextStyle(color: Color(0xFFD05353)),
+                            ),
+                          ],
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          GlassCard(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text(
+                                  'Actions',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: actionsEnabled
+                                        ? _openOrderPage
+                                        : null,
+                                    child: const Text('Add order'),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: actionsEnabled
+                                        ? _openRecoveryDialog
+                                        : null,
+                                    child: const Text('Add recovery'),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: actionsEnabled
+                                        ? _openStockDialog
+                                        : null,
+                                    child: const Text('Add current stock'),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                if (_orders.isNotEmpty)
+                                  Text(
+                                    'Orders added: ${_orders.length}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                if (_hasStock)
+                                  Text(
+                                    'Stock items: ${_stockItems.length}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                if (_paymentController.text.trim().isNotEmpty)
+                                  Text(
+                                    'Recovery: ${_paymentType.toUpperCase()} ${_paymentController.text}'
+                                    '${_paymentType == 'cheque' && _chequeImage != null ? ' (photo attached)' : ''}',
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _notesController,
+                                  maxLines: 3,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Notes (optional)',
+                                  ),
+                                  enabled: actionsEnabled,
+                                ),
+                                const SizedBox(height: 16),
+                                ElevatedButton(
+                                  onPressed: canSubmit
+                                      ? () => _saveVisit(
+                                          dutyId: dutyId,
+                                          dsfId: profile.uid,
+                                          distributorId: profile.distributorId,
+                                          tsaId: tsaId,
+                                          shopId: shopId,
+                                          shopTitle: shopTitle,
+                                          distanceMeters: distanceMeters,
+                                          filer: filer,
+                                          discountPct: discountPct,
+                                        )
+                                      : null,
+                                  child: _isSaving
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Text(
+                                          alreadySubmitted
+                                              ? 'Already submitted'
+                                              : (_elapsed() < _minVisitDuration
+                                                    ? 'Wait ${_formatMmSs(_remaining())}'
+                                                    : 'Submit'),
+                                        ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         ),

@@ -19,6 +19,19 @@ class DutyRemoteDataSource {
       'startLocation': {'lat': startLat, 'lng': startLng},
       'endAt': null,
     });
+    try {
+      await _firestore.collection('alerts').add({
+        'type': 'duty_start',
+        'dutyId': doc.id,
+        'dsfId': dsfId,
+        'distributorId': distributorId,
+        'lat': startLat,
+        'lng': startLng,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // ignore alert logging failures
+    }
     return doc.id;
   }
 
@@ -32,6 +45,24 @@ class DutyRemoteDataSource {
       'endAt': FieldValue.serverTimestamp(),
       'endLocation': {'lat': endLat, 'lng': endLng},
     });
+    try {
+      final doc = await _firestore.collection('duties').doc(dutyId).get();
+      final data = doc.data() ?? const <String, dynamic>{};
+      final dsfId = data['dsfId'];
+      final distributorId = data['distributorId'];
+      await _firestore.collection('alerts').add({
+        'type': 'duty_end',
+        'dutyId': dutyId,
+        if (dsfId is String && dsfId.isNotEmpty) 'dsfId': dsfId,
+        if (distributorId is String && distributorId.isNotEmpty)
+          'distributorId': distributorId,
+        'lat': endLat,
+        'lng': endLng,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // ignore alert logging failures
+    }
   }
 
   Future<Map<String, dynamic>> getDuty(String dutyId) async {

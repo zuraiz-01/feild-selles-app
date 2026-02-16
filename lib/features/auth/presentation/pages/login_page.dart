@@ -145,11 +145,11 @@ class _LoginPageState extends State<LoginPage> {
                               ),
                               if (showBootstrap) ...[
                                 const SizedBox(height: 8),
-                                // TextButton(
-                                //   onPressed: () =>
-                                //       Get.toNamed(AppRoutes.bootstrapAccounts),
-                                //   child: const Text('Bootstrap accounts'),
-                                // ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Get.toNamed(AppRoutes.bootstrapAccounts),
+                                  child: const Text('Bootstrap accounts'),
+                                ),
                               ],
                             ],
                           ),

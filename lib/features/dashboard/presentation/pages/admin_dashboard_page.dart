@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/logged_in_name_text.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
@@ -28,16 +29,17 @@ class AdminDashboardPage extends StatelessWidget {
               child: const Icon(Icons.local_cafe, color: AppTheme.accent),
             ),
             const SizedBox(width: 12),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              children: const [
                 Text(
                   'Admin HQ',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
                 ),
                 SizedBox(height: 2),
-                Text(
-                  'Brewing controls & data',
+                LoggedInNameText(
+                  prefix: 'Hi, ',
+                  fallback: 'Admin',
                   style: TextStyle(color: AppTheme.mutedInk, fontSize: 12),
                 ),
               ],
@@ -105,34 +107,27 @@ class AdminDashboardPage extends StatelessWidget {
                       ),
                       _AdminAction(
                         order: 1,
-                        icon: Icons.manage_accounts,
-                        title: 'Manage DSFs',
-                        subtitle: 'Accounts, permissions, resets.',
-                        onTap: () => Get.toNamed(AppRoutes.adminDsfs),
-                      ),
-                      _AdminAction(
-                        order: 2,
                         icon: Icons.store_mall_directory_outlined,
                         title: 'Manage Shops',
                         subtitle: 'Retail network upkeep.',
                         onTap: () => Get.toNamed(AppRoutes.adminShops),
                       ),
                       _AdminAction(
-                        order: 3,
+                        order: 2,
                         icon: Icons.inventory_2_outlined,
                         title: 'Manage Products',
                         subtitle: 'Catalog and SKUs.',
                         onTap: () => Get.toNamed(AppRoutes.adminProducts),
                       ),
                       _AdminAction(
-                        order: 4,
+                        order: 3,
                         icon: Icons.map_outlined,
                         title: 'Live Map & Alerts',
                         subtitle: 'See coverage heat.',
                         onTap: () => Get.toNamed(AppRoutes.adminMap),
                       ),
                       _AdminAction(
-                        order: 5,
+                        order: 4,
                         icon: Icons.auto_awesome,
                         title: 'Experiments',
                         subtitle: 'Coming soon.',

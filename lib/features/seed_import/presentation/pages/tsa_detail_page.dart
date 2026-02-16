@@ -15,25 +15,47 @@ import '../../../../app/ui/app_theme.dart';
 class TsaDetailPage extends StatelessWidget {
   const TsaDetailPage({super.key});
 
-  Future<String?> _pickDateKey(BuildContext context) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
+  bool _isImportedShop(Map<String, dynamic> data) {
+    return data['importId'] != null || data['importedAt'] != null;
+  }
+
+  static const _dayOptions = <Map<String, String>>[
+    {'key': 'mon', 'label': 'Monday'},
+    {'key': 'tue', 'label': 'Tuesday'},
+    {'key': 'wed', 'label': 'Wednesday'},
+    {'key': 'thu', 'label': 'Thursday'},
+    {'key': 'fri', 'label': 'Friday'},
+    {'key': 'sat', 'label': 'Saturday'},
+    {'key': 'sun', 'label': 'Sunday'},
+  ];
+
+  String _labelForDayKey(String key) {
+    for (final item in _dayOptions) {
+      if (item['key'] == key) return item['label'] ?? key;
+    }
+    return key;
+  }
+
+  Future<String?> _pickDayKey(BuildContext context) async {
+    return showDialog<String>(
       context: context,
-      initialDate: now,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 1),
+      builder: (context) => SimpleDialog(
+        title: const Text('Select day'),
+        children: [
+          for (final item in _dayOptions)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(context).pop(item['key']),
+              child: Text(item['label'] ?? ''),
+            ),
+        ],
+      ),
     );
-    if (picked == null) return null;
-    final y = picked.year.toString().padLeft(4, '0');
-    final m = picked.month.toString().padLeft(2, '0');
-    final d = picked.day.toString().padLeft(2, '0');
-    return '$y-$m-$d';
   }
 
   Future<void> _assignShopsForDay(
     BuildContext context, {
     required String tsaId,
-    required String dateKey,
+    required String dayKey,
   }) async {
     final shopsCol = FirebaseFirestore.instance
         .collection('seedTsas')
@@ -43,13 +65,20 @@ class TsaDetailPage extends StatelessWidget {
         .collection('seedTsas')
         .doc(tsaId)
         .collection('dailyAssignments')
-        .doc(dateKey)
+        .doc(dayKey)
         .collection('shops');
 
     final shopsSnap = await shopsCol.orderBy('code').get();
+    final availableShops = shopsSnap.docs
+        .where((doc) => !_isImportedShop(doc.data()))
+        .toList();
     final currentAssignedSnap = await assignmentRoot.get();
     if (!context.mounted) return;
-    final selected = currentAssignedSnap.docs.map((d) => d.id).toSet();
+    final availableIds = availableShops.map((d) => d.id).toSet();
+    final selected = currentAssignedSnap.docs
+        .map((d) => d.id)
+        .where(availableIds.contains)
+        .toSet();
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -58,13 +87,13 @@ class TsaDetailPage extends StatelessWidget {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: Text('Assign shops ($dateKey)'),
+              title: Text('Assign shops (${_labelForDayKey(dayKey)})'),
               content: SizedBox(
                 width: double.maxFinite,
                 child: ListView(
                   shrinkWrap: true,
                   children: [
-                    for (final doc in shopsSnap.docs)
+                    for (final doc in availableShops)
                       CheckboxListTile(
                         value: working.contains(doc.id),
                         onChanged: (v) {
@@ -121,7 +150,7 @@ class TsaDetailPage extends StatelessWidget {
       if (!context.mounted) return;
       Get.snackbar(
         'Saved',
-        'Assignments updated for $dateKey.',
+        'Assignments updated for ${_labelForDayKey(dayKey)}.',
         snackPosition: SnackPosition.BOTTOM,
       );
     }
@@ -647,14 +676,19 @@ class TsaDetailPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
         title: Text(tsaName),
         actions: [
           IconButton(
             onPressed: () async {
-              final dateKey = await _pickDateKey(context);
-              if (dateKey == null) return;
+              final dayKey = await _pickDayKey(context);
+              if (dayKey == null) return;
               if (!context.mounted) return;
-              await _assignShopsForDay(context, tsaId: tsaId, dateKey: dateKey);
+              await _assignShopsForDay(context, tsaId: tsaId, dayKey: dayKey);
             },
             icon: const Icon(Icons.event_available),
             tooltip: 'Assign shops for a day',
@@ -680,7 +714,9 @@ class TsaDetailPage extends StatelessWidget {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final docs = snapshot.data!.docs;
+            final docs = snapshot.data!.docs
+                .where((doc) => !_isImportedShop(doc.data()))
+                .toList();
             if (docs.isEmpty) {
               return Center(
                 child: Column(

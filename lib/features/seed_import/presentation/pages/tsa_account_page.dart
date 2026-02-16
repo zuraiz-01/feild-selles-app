@@ -54,11 +54,7 @@ class _RecentOfficeLocation {
     final lng = double.tryParse(parts[1]);
     final radius = double.tryParse(parts[2]);
     if (lat == null || lng == null || radius == null) return null;
-    return _RecentOfficeLocation(
-      lat: lat,
-      lng: lng,
-      radiusMeters: radius,
-    );
+    return _RecentOfficeLocation(lat: lat, lng: lng, radiusMeters: radius);
   }
 }
 
@@ -66,10 +62,7 @@ class _OfficePickResult {
   final LatLng center;
   final double radiusMeters;
 
-  const _OfficePickResult({
-    required this.center,
-    required this.radiusMeters,
-  });
+  const _OfficePickResult({required this.center, required this.radiusMeters});
 }
 
 class _OfficeMapPickerSheet extends StatefulWidget {
@@ -125,20 +118,14 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
       _searchError = null;
     });
     try {
-      final uri = Uri.https(
-        'nominatim.openstreetmap.org',
-        '/search',
-        {
-          'format': 'json',
-          'q': trimmed,
-          'limit': '5',
-        },
-      );
+      final uri = Uri.https('nominatim.openstreetmap.org', '/search', {
+        'format': 'json',
+        'q': trimmed,
+        'limit': '5',
+      });
       final response = await http.get(
         uri,
-        headers: const {
-          'User-Agent': 'field_sales_app/1.0 (map picker)',
-        },
+        headers: const {'User-Agent': 'field_sales_app/1.0 (map picker)'},
       );
       if (response.statusCode != 200) {
         throw StateError('Search failed (${response.statusCode}).');
@@ -223,9 +210,7 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
     final height = MediaQuery.of(context).size.height * 0.75;
     return Container(
       height: height,
-      decoration: const BoxDecoration(
-        color: Colors.transparent,
-      ),
+      decoration: const BoxDecoration(color: Colors.transparent),
       child: GlassCard(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -266,17 +251,17 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
                         ),
                       )
                     : (_searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {
-                                _searchResults = [];
-                                _searchError = null;
-                              });
-                            },
-                            icon: const Icon(Icons.clear),
-                          )),
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {
+                                  _searchResults = [];
+                                  _searchError = null;
+                                });
+                              },
+                              icon: const Icon(Icons.clear),
+                            )),
               ),
             ),
             const SizedBox(height: 8),
@@ -303,10 +288,7 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
                 alignment: Alignment.centerLeft,
                 child: Text(
                   _searchError!,
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
                 ),
               ),
             ],
@@ -482,6 +464,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   final _officeRadius = TextEditingController();
 
   bool _isWorking = false;
+  bool _isEditMode = false;
   String? _status;
   DsfAccount? _lastAccount;
   bool _showPassword = false;
@@ -626,7 +609,8 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     DsfAccount? account,
   }) {
     if (account != null) {
-      final hasChanged = _lastAccount == null ||
+      final hasChanged =
+          _lastAccount == null ||
           _lastAccount!.uid != account.uid ||
           _lastAccount!.email != account.email ||
           _lastAccount!.password != account.password ||
@@ -636,8 +620,9 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         _name.text = account.name.isEmpty ? tsaName : account.name;
         _email.text = account.email;
         _password.text = account.password;
-        _distributorId.text =
-            account.distributorId.isEmpty ? tsaId : account.distributorId;
+        _distributorId.text = account.distributorId.isEmpty
+            ? tsaId
+            : account.distributorId;
       }
       _lastAccount = account;
       return;
@@ -646,15 +631,12 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     if (_lastAccount == null) {
       _name.text = tsaName;
       _email.text = _service.emailForTsa(tsaId);
-      _password.text = _service.generatePassword();
+      _password.text = '';
       _distributorId.text = tsaId;
     }
   }
 
-  Future<void> _create({
-    required String tsaId,
-    required String tsaName,
-  }) async {
+  Future<void> _create({required String tsaId, required String tsaName}) async {
     final officeLat = double.tryParse(_officeLat.text.trim());
     final officeLng = double.tryParse(_officeLng.text.trim());
     final officeRadius = double.tryParse(_officeRadius.text.trim());
@@ -680,6 +662,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         officeRadiusMeters: officeRadius,
       );
       _status = 'Created DSF: ${account.email}';
+      _isEditMode = false;
     } catch (e) {
       _status = 'Create failed: $e';
     } finally {
@@ -709,6 +692,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         officeRadiusMeters: officeRadius,
       );
       _status = 'Updated DSF: ${account.email}';
+      _isEditMode = false;
     } catch (e) {
       _status = 'Update failed: $e';
     } finally {
@@ -727,6 +711,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       await _service.deleteAccount(tsaId: tsaId);
       _status = 'Deleted DSF account for TSA';
       _lastAccount = null;
+      _isEditMode = false;
     } catch (e) {
       _status = 'Delete failed: $e';
     } finally {
@@ -751,6 +736,11 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
         title: Text(tsaName),
         actions: [
           IconButton(
@@ -766,12 +756,15 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
           builder: (context, snapshot) {
             final account = snapshot.data;
             _syncControllers(tsaId: tsaId, tsaName: tsaName, account: account);
+            final isEditable = account == null || _isEditMode;
 
             return ListView(
               children: [
                 SectionTitle(
                   title: 'TSA Profile',
-                  subtitle: 'Manage DSF credentials and access.',
+                  subtitle: isEditable
+                      ? 'Manage DSF credentials and access.'
+                      : 'View-only mode. Press Edit to update account.',
                 ),
                 const SizedBox(height: 16),
                 GlassCard(
@@ -787,16 +780,27 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                               color: AppTheme.skySoft,
                               borderRadius: BorderRadius.circular(16),
                             ),
-                            child: const Icon(Icons.person, color: AppTheme.sky),
+                            child: const Icon(
+                              Icons.person,
+                              color: AppTheme.sky,
+                            ),
                           ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(tsaName, style: Theme.of(context).textTheme.titleMedium),
+                                Text(
+                                  tsaName,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
                                 const SizedBox(height: 4),
-                                Text('TSA ID: $tsaId', style: Theme.of(context).textTheme.bodySmall),
+                                Text(
+                                  'TSA ID: $tsaId',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
                               ],
                             ),
                           ),
@@ -805,9 +809,13 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 12),
                       ExpansionTile(
                         title: const Text('Credentials'),
-                        childrenPadding: const EdgeInsets.symmetric(horizontal: 8),
+                        childrenPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
                         children: [
-                          SelectableText('Email: ${account?.email ?? _email.text}'),
+                          SelectableText(
+                            'Email: ${account?.email ?? _email.text}',
+                          ),
                           const SizedBox(height: 6),
                           Row(
                             children: [
@@ -825,10 +833,13 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                                   });
                                 },
                                 icon: Icon(
-                                  _showPassword ? Icons.visibility_off : Icons.visibility,
+                                  _showPassword
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
                                 ),
-                                tooltip:
-                                    _showPassword ? 'Hide password' : 'Show password',
+                                tooltip: _showPassword
+                                    ? 'Hide password'
+                                    : 'Show password',
                               ),
                             ],
                           ),
@@ -844,6 +855,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                     children: [
                       TextField(
                         controller: _name,
+                        readOnly: !isEditable,
                         decoration: const InputDecoration(
                           labelText: 'DSF name',
                           prefixIcon: Icon(Icons.badge_outlined),
@@ -852,6 +864,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _email,
+                        readOnly: !isEditable,
                         keyboardType: TextInputType.emailAddress,
                         decoration: const InputDecoration(
                           labelText: 'Email',
@@ -861,43 +874,32 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _password,
+                        readOnly: !isEditable,
                         obscureText: !_showPassword,
                         decoration: InputDecoration(
                           labelText: 'Password',
                           prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _password.text = _service.generatePassword();
-                                  });
-                                },
-                                icon: const Icon(Icons.refresh),
-                                tooltip: 'Generate random password',
-                              ),
-                              IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _showPassword = !_showPassword;
-                                  });
-                                },
-                                icon: Icon(
-                                  _showPassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                ),
-                                tooltip:
-                                    _showPassword ? 'Hide password' : 'Show password',
-                              ),
-                            ],
+                          suffixIcon: IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _showPassword = !_showPassword;
+                              });
+                            },
+                            icon: Icon(
+                              _showPassword
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                            ),
+                            tooltip: _showPassword
+                                ? 'Hide password'
+                                : 'Show password',
                           ),
                         ),
                       ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: _distributorId,
+                        readOnly: !isEditable,
                         decoration: const InputDecoration(
                           labelText: 'Distributor ID',
                           prefixIcon: Icon(Icons.map_outlined),
@@ -906,6 +908,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _officeLat,
+                        readOnly: !isEditable,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(
                           labelText: 'Office latitude',
@@ -915,6 +918,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _officeLng,
+                        readOnly: !isEditable,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(
                           labelText: 'Office longitude',
@@ -924,6 +928,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _officeRadius,
+                        readOnly: !isEditable,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(
                           labelText: 'Office radius (meters)',
@@ -947,6 +952,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                               )
                               .toList(),
                           onChanged: (value) {
+                            if (!isEditable) return;
                             if (value == null) return;
                             _applyRecent(value);
                           },
@@ -954,35 +960,64 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                         const SizedBox(height: 12),
                       ],
                       OutlinedButton.icon(
-                        onPressed: () => _openMapPicker(context),
+                        onPressed: isEditable
+                            ? () => _openMapPicker(context)
+                            : null,
                         icon: const Icon(Icons.map_outlined),
                         label: const Text('Pick on map'),
                       ),
                       const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton(
-                              onPressed: _isWorking
-                                  ? null
-                                  : account == null
-                                      ? () =>
-                                          _create(tsaId: tsaId, tsaName: tsaName)
-                                      : () => _update(tsaId: tsaId),
-                              child: Text(account == null ? 'Create' : 'Update'),
+                      if (account == null)
+                        ElevatedButton(
+                          onPressed: _isWorking
+                              ? null
+                              : () => _create(tsaId: tsaId, tsaName: tsaName),
+                          child: const Text('Create user account'),
+                        )
+                      else if (!isEditable)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isWorking
+                                    ? null
+                                    : () => setState(() => _isEditMode = true),
+                                child: const Text('Edit'),
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton(
-                              onPressed: _isWorking || account == null
-                                  ? null
-                                  : () => _delete(tsaId: tsaId),
-                              child: const Text('Delete'),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _isWorking
+                                    ? null
+                                    : () => _delete(tsaId: tsaId),
+                                child: const Text('Delete'),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: _isWorking
+                                    ? null
+                                    : () => _update(tsaId: tsaId),
+                                child: const Text('Update'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: _isWorking
+                                    ? null
+                                    : () => setState(() => _isEditMode = false),
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),

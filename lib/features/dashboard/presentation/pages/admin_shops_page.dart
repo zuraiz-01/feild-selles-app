@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 
@@ -19,6 +20,11 @@ class AdminShopsPage extends StatelessWidget {
     final shopsCol = FirebaseFirestore.instance.collection('shops');
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
         titleSpacing: 20,
         toolbarHeight: 70,
         title: Row(
@@ -426,11 +432,28 @@ class AdminShopsPage extends StatelessWidget {
                 if (existingId != null)
                   TextButton.icon(
                     onPressed: () async {
-                      await shopsCol.doc(existingId).delete();
+                      final shopCode =
+                          (existing?['code'] as String?)?.trim().isNotEmpty ==
+                              true
+                          ? (existing?['code'] as String).trim()
+                          : existingId;
+                      final shopName =
+                          (existing?['name'] as String?)?.trim() ?? '';
+                      final confirmed = await _confirmDeleteShop(
+                        context,
+                        shopCode: shopCode,
+                        shopName: shopName,
+                      );
+                      if (!confirmed) return;
+
+                      final deletedCount = await _deleteShopEverywhere(
+                        shopId: existingId,
+                      );
+
                       if (context.mounted) Navigator.of(context).pop();
                       Get.snackbar(
                         'Deleted',
-                        'Shop $existingId removed',
+                        'Shop $shopCode removed ($deletedCount records).',
                         snackPosition: SnackPosition.BOTTOM,
                       );
                     },
@@ -501,6 +524,108 @@ class AdminShopsPage extends StatelessWidget {
         );
       },
     );
+  }
+
+  Future<bool> _confirmDeleteShop(
+    BuildContext context, {
+    required String shopCode,
+    required String shopName,
+  }) async {
+    final title = shopName.isNotEmpty ? '$shopCode - $shopName' : shopCode;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete shop everywhere'),
+        content: Text(
+          'This will permanently delete "$title" from all related places, including\n\n'
+          '- global shops\n'
+          '- TSA shop lists\n'
+          '- daily assignments\n'
+          '- shop sales subcollection\n'
+          '- duty visit records\n'
+          '- alerts\n\n'
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete all'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Future<int> _deleteShopEverywhere({required String shopId}) async {
+    final firestore = FirebaseFirestore.instance;
+    final refs = <DocumentReference>[];
+
+    // Global shop document.
+    refs.add(firestore.collection('shops').doc(shopId));
+
+    // Alerts linked to this shop.
+    final alertsSnap = await firestore
+        .collection('alerts')
+        .where('shopId', isEqualTo: shopId)
+        .get();
+    refs.addAll(alertsSnap.docs.map((doc) => doc.reference));
+
+    // Visit documents across all duties.
+    final visitsSnap = await firestore
+        .collectionGroup('shopVisits')
+        .where('shopId', isEqualTo: shopId)
+        .get();
+    refs.addAll(visitsSnap.docs.map((doc) => doc.reference));
+
+    // Remove from all TSA scopes: shops, sales, and daily assignments.
+    final seedTsasSnap = await firestore.collection('seedTsas').get();
+    for (final tsaDoc in seedTsasSnap.docs) {
+      final tsaRef = tsaDoc.reference;
+      final tsaShopRef = tsaRef.collection('shops').doc(shopId);
+
+      final salesSnap = await tsaShopRef.collection('sales').get();
+      refs.addAll(salesSnap.docs.map((doc) => doc.reference));
+      refs.add(tsaShopRef);
+
+      final assignmentDaysSnap = await tsaRef
+          .collection('dailyAssignments')
+          .get();
+      for (final dayDoc in assignmentDaysSnap.docs) {
+        refs.add(dayDoc.reference.collection('shops').doc(shopId));
+      }
+    }
+
+    // De-duplicate and delete in safe Firestore batch chunks.
+    final unique = <String, DocumentReference>{};
+    for (final ref in refs) {
+      unique[ref.path] = ref;
+    }
+
+    var deletedCount = 0;
+    var opsInBatch = 0;
+    var batch = firestore.batch();
+
+    for (final ref in unique.values) {
+      batch.delete(ref);
+      deletedCount++;
+      opsInBatch++;
+      if (opsInBatch >= 450) {
+        await batch.commit();
+        batch = firestore.batch();
+        opsInBatch = 0;
+      }
+    }
+
+    if (opsInBatch > 0) {
+      await batch.commit();
+    }
+
+    return deletedCount;
   }
 
   String _readNum(Map<String, dynamic>? data, String path) {

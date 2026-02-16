@@ -52,3 +52,6 @@ app.*.map.json
 !.fvm/fvm_config.json
 !.fvm/version
 !.fvm/release
+
+# Local Netlify folder
+.netlify

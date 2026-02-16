@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 
@@ -13,6 +14,11 @@ class AdminDsfsPage extends StatelessWidget {
     final dsfCol = FirebaseFirestore.instance.collection('dsfAccounts');
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to dashboard',
+        ),
         titleSpacing: 20,
         toolbarHeight: 70,
         title: Row(
@@ -179,16 +185,19 @@ class AdminDsfsPage extends StatelessWidget {
                   ),
                   readOnly: existingId != null,
                 ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: nameController,
                   decoration: const InputDecoration(labelText: 'Name'),
                 ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: emailController,
                   decoration: const InputDecoration(
                     labelText: 'Email (optional)',
                   ),
                 ),
+                const SizedBox(height: 8),
                 TextField(
                   controller: distributorController,
                   decoration: const InputDecoration(
@@ -203,34 +212,66 @@ class AdminDsfsPage extends StatelessWidget {
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: centerLatController,
-                        decoration: const InputDecoration(labelText: 'Lat'),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: centerLngController,
-                        decoration: const InputDecoration(labelText: 'Lng'),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: radiusController,
-                        decoration: const InputDecoration(
-                          labelText: 'Radius m',
+                const SizedBox(height: 8),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final compact = constraints.maxWidth < 360;
+                    if (compact) {
+                      return Column(
+                        children: [
+                          TextField(
+                            controller: centerLatController,
+                            decoration: const InputDecoration(labelText: 'Lat'),
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: centerLngController,
+                            decoration: const InputDecoration(labelText: 'Lng'),
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: radiusController,
+                            decoration: const InputDecoration(
+                              labelText: 'Radius (m)',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: centerLatController,
+                            decoration: const InputDecoration(labelText: 'Lat'),
+                            keyboardType: TextInputType.number,
+                          ),
                         ),
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ],
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: centerLngController,
+                            decoration: const InputDecoration(labelText: 'Lng'),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextField(
+                            controller: radiusController,
+                            decoration: const InputDecoration(
+                              labelText: 'Radius (m)',
+                            ),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 ),
               ],
             ),

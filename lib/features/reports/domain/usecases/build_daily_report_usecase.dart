@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import '../../../duty/domain/repositories/duty_repository.dart';
 import '../../domain/export/excel_exporter.dart';
 import '../repositories/reports_repository.dart';
@@ -99,13 +97,12 @@ class BuildDailyReportUseCase {
     );
 
     if (upload) {
-      final file = File(result.filePath);
       await _reportsRepository.uploadDailyReportAndCreateMetadata(
         distributorId: distributorId,
         dsfId: dsfId,
         dateKey: dateKey,
         sizeBytes: result.sizeBytes,
-        file: file,
+        bytes: result.bytes,
       );
     }
 

@@ -1,8 +1,8 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 abstract class ReportsRepository {
   Future<void> uploadDailyReportAndCreateMetadata({
-    required File file,
+    required Uint8List bytes,
     required String distributorId,
     required String dsfId,
     required String dateKey,
