@@ -23,7 +23,6 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   Duration _minVisitDuration = const Duration(minutes: 5);
   double? _requiredDistanceMeters;
 
-  final _stockController = TextEditingController();
   final _paymentController = TextEditingController();
   final _notesController = TextEditingController();
   List<Map<String, dynamic>> _orders = [];
@@ -60,7 +59,6 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   void dispose() {
     _ticker?.cancel();
     _posSub?.cancel();
-    _stockController.dispose();
     _paymentController.dispose();
     _notesController.dispose();
     super.dispose();
@@ -260,7 +258,6 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     _setStateSafe(() {
       _stockItems = normalized;
       _hasStock = _stockItems.isNotEmpty;
-      _stockController.text = _stockItems.length.toString();
     });
   }
 
@@ -280,7 +277,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  value: paymentType,
+                  initialValue: paymentType,
                   items: const [
                     DropdownMenuItem(value: 'cash', child: Text('Cash')),
                     DropdownMenuItem(value: 'cheque', child: Text('Cheque')),
@@ -525,9 +522,17 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
             }
             final shopData = snapshot.data!.data();
             final filer = (shopData?['filer'] as bool?) ?? false;
-            final discountPct =
-                (shopData?['discountPct'] as num?)?.toDouble() ??
-                (filer ? 0.05 : 0.025);
+            final discountEnabled =
+                (shopData?['discountEnabled'] as bool?) ?? true;
+            final storedDiscountPct = (shopData?['discountPct'] as num?)
+                ?.toDouble();
+            final fallbackDiscountPct = filer ? 0.05 : 0.025;
+            final discountPct = discountEnabled
+                ? (storedDiscountPct ?? fallbackDiscountPct)
+                : 0.0;
+            final discountLabel = discountEnabled
+                ? '${(discountPct * 100).toStringAsFixed(1)}% discount'
+                : 'Discount disabled';
             final distanceMeters = _distanceToShopMeters(shopData);
 
             return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
@@ -565,8 +570,8 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                         children: [
                           Text(
                             filer
-                                ? 'Filer shop (5% discount)'
-                                : 'Non-filer (2.5% discount)',
+                                ? 'Filer shop ($discountLabel)'
+                                : 'Non-filer ($discountLabel)',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 8),

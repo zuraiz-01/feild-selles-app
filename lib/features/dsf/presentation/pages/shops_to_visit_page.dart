@@ -224,6 +224,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
     required BuildContext context,
     required String dsfAccountId,
     required String dsfUid,
+    required String distributorId,
     required String dayKey,
   }) async {
     final result = await _openCreateShopDialog(context);
@@ -248,6 +249,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
       'name': result.name,
       'area': result.area,
       'filer': result.filer,
+      'discountEnabled': true,
       'discountPct': result.filer ? 0.05 : 0.025,
       'assignedDsfId': dsfAccountId,
       'assignedDsfUid': dsfUid,
@@ -295,6 +297,25 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
       }, SetOptions(merge: true));
       txn.set(assignmentRef, {'assignedAt': now}, SetOptions(merge: true));
     });
+
+    try {
+      await FirebaseFirestore.instance.collection('alerts').add({
+        'type': 'shop_added',
+        'dsfId': dsfUid,
+        'distributorId': distributorId,
+        'tsaId': dsfAccountId,
+        'shopId': shopId,
+        'shopCode': result.code,
+        'shopTitle': result.name.trim().isEmpty ? result.code : result.name,
+        if (result.area.trim().isNotEmpty) 'area': result.area.trim(),
+        'dayKey': dayKey,
+        if (result.lat != null) 'lat': result.lat,
+        if (result.lng != null) 'lng': result.lng,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {
+      // ignore alert logging failures
+    }
 
     if (!context.mounted) return;
     Get.snackbar(
@@ -536,6 +557,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
                     context: context,
                     dsfAccountId: _dsfAccountId!,
                     dsfUid: profile.uid,
+                    distributorId: profile.distributorId,
                     dayKey: dayKey,
                   )
                 : null,
@@ -719,7 +741,7 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
       });
       return;
     }
-    if (_tryMoveToSharedLocation(trimmed)) return;
+    if (await _tryMoveToSharedLocation(trimmed)) return;
 
     setState(() {
       _isSearching = true;
@@ -811,8 +833,8 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
     _mapController.move(_center, 16);
   }
 
-  bool _tryMoveToSharedLocation(String raw) {
-    final parsed = MapLocationUrlParser.tryParse(raw);
+  Future<bool> _tryMoveToSharedLocation(String raw) async {
+    final parsed = await MapLocationUrlParser.tryParseSmart(raw);
     if (parsed == null) return false;
     setState(() {
       _center = LatLng(parsed.lat, parsed.lng);

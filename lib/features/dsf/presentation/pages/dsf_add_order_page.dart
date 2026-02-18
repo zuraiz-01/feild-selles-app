@@ -21,6 +21,19 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
   final List<Map<String, dynamic>> _orders = [];
   bool _loadedExisting = false;
 
+  String _normalizeUnit(dynamic raw) {
+    final unit = raw?.toString().trim() ?? '';
+    if (unit.isEmpty) return 'L';
+    final lower = unit.toLowerCase();
+    if (lower == 'l' ||
+        lower == 'ltr' ||
+        lower == 'liter' ||
+        lower == 'litre') {
+      return 'L';
+    }
+    return unit;
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -98,13 +111,13 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
                       final data = doc.data();
                       final name = (data['name'] as String?) ?? doc.id;
                       final sku = (data['sku'] as String?) ?? doc.id;
-                      final unit = (data['unit'] as String?)?.trim() ?? '';
+                      final unit = _normalizeUnit(data['unit']);
                       final price = (data['price'] as num?)?.toDouble();
                       final details = <String>[
                         if (sku.isNotEmpty) 'SKU: $sku',
                         if (unit.isNotEmpty) 'Unit: $unit',
                         if (price != null)
-                          'Rate: ${price.toStringAsFixed(0)}',
+                          'Rate: Rs ${price.toStringAsFixed(2)}/L',
                       ];
                       return GlassCard(
                         padding: const EdgeInsets.symmetric(
@@ -147,13 +160,16 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
                                 'productId': doc.id,
                                 'productName': name,
                                 'quantity': parsed,
-                                if (_selectedProductUnit.isNotEmpty)
-                                  'unit': _selectedProductUnit,
+                                'unit': _selectedProductUnit.isNotEmpty
+                                    ? _selectedProductUnit
+                                    : 'L',
+                                if (price != null) 'pricePerLiter': price,
+                                if (price != null) 'lineAmount': parsed * price,
                               });
                             });
                             Get.snackbar(
                               'Added',
-                              '$name ${parsed.toStringAsFixed(0)}${_selectedProductUnit.isNotEmpty ? ' ${_selectedProductUnit}' : ''}',
+                              '$name ${parsed.toStringAsFixed(2)} ${_selectedProductUnit.isNotEmpty ? _selectedProductUnit : 'L'}',
                               snackPosition: SnackPosition.BOTTOM,
                             );
                           },
@@ -179,17 +195,17 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
             _selectedProductName.isEmpty
                 ? 'Add quantity'
                 : _selectedProductUnit.isEmpty
-                    ? 'Add quantity • $_selectedProductName'
-                    : 'Add quantity • $_selectedProductName (${_selectedProductUnit})',
+                ? 'Add quantity • $_selectedProductName'
+                : 'Add quantity • $_selectedProductName ($_selectedProductUnit)',
           ),
           content: TextField(
             controller: _qtyController,
-            keyboardType: TextInputType.number,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText: 'Quantity',
+              labelText: 'Quantity (liters)',
               suffixText: _selectedProductUnit.isNotEmpty
                   ? _selectedProductUnit
-                  : null,
+                  : 'L',
             ),
           ),
           actions: [

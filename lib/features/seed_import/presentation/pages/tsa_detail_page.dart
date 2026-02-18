@@ -169,11 +169,18 @@ class TsaDetailPage extends StatelessWidget {
     return result;
   }
 
+  String _formatPercentInput(double rate) {
+    final percent = rate * 100;
+    final rounded = percent.toStringAsFixed(2);
+    return rounded.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
   Future<void> _createShop(BuildContext context, String tsaId) async {
     final dsfOptions = await FirebaseFirestore.instance
         .collection('dsfAccounts')
         .orderBy('name')
         .get();
+    if (!context.mounted) return;
     final shopsCol = FirebaseFirestore.instance.collection('shops');
     final codeController = TextEditingController();
     final nameController = TextEditingController();
@@ -193,6 +200,10 @@ class TsaDetailPage extends StatelessWidget {
       'sun': false,
     };
     bool filer = false;
+    bool discountEnabled = true;
+    final discountController = TextEditingController(
+      text: _formatPercentInput(0.025),
+    );
     LatLng? picked;
 
     final result = await showDialog<_CreateShopResult>(
@@ -245,11 +256,39 @@ class TsaDetailPage extends StatelessWidget {
                         color: Colors.grey.shade100,
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: SwitchListTile(
-                        contentPadding: EdgeInsets.zero,
-                        value: filer,
-                        onChanged: (v) => setState(() => filer = v),
-                        title: const Text('Filer (5% discount)'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: filer,
+                            onChanged: (v) => setState(() => filer = v),
+                            title: const Text('Filer shop'),
+                          ),
+                          const SizedBox(height: 6),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            value: discountEnabled,
+                            onChanged: (v) {
+                              setState(() {
+                                discountEnabled = v;
+                              });
+                            },
+                            title: const Text('Allow discount'),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: discountController,
+                            enabled: discountEnabled,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Discount %',
+                              suffixText: '%',
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -330,7 +369,7 @@ class TsaDetailPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           DropdownButtonFormField<String>(
-                            value:
+                            initialValue:
                                 (selectedDsf != null &&
                                     dsfOptions.docs.any(
                                       (d) => d.id == selectedDsf,
@@ -396,19 +435,34 @@ class TsaDetailPage extends StatelessWidget {
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
-                            children: schedule.keys
-                                .map(
-                                  (d) => FilterChip(
-                                    label: Text(d.toUpperCase()),
-                                    selected: schedule[d] == true,
-                                    onSelected: (v) {
-                                      setState(() {
-                                        schedule[d] = v;
-                                      });
-                                    },
+                            children: schedule.keys.map((d) {
+                              final selected = schedule[d] == true;
+                              return FilterChip(
+                                label: Text(
+                                  d.toUpperCase(),
+                                  style: TextStyle(
+                                    color: selected
+                                        ? AppTheme.antiFlashWhite
+                                        : AppTheme.ink,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                )
-                                .toList(),
+                                ),
+                                showCheckmark: false,
+                                selectedColor: AppTheme.bangladeshGreen,
+                                backgroundColor: AppTheme.skySoft,
+                                side: BorderSide(
+                                  color: selected
+                                      ? AppTheme.darkGreen
+                                      : AppTheme.accentSoft,
+                                ),
+                                selected: selected,
+                                onSelected: (v) {
+                                  setState(() {
+                                    schedule[d] = v;
+                                  });
+                                },
+                              );
+                            }).toList(),
                           ),
                         ],
                       ),
@@ -425,6 +479,24 @@ class TsaDetailPage extends StatelessWidget {
                   onPressed: () {
                     final code = codeController.text.trim();
                     if (code.isEmpty) return;
+                    double discountPct = 0;
+                    if (discountEnabled) {
+                      final parsed = double.tryParse(
+                        discountController.text.trim(),
+                      );
+                      if (parsed == null ||
+                          parsed.isNaN ||
+                          parsed < 0 ||
+                          parsed > 100) {
+                        Get.snackbar(
+                          'Invalid discount',
+                          'Enter discount between 0 and 100.',
+                          snackPosition: SnackPosition.BOTTOM,
+                        );
+                        return;
+                      }
+                      discountPct = parsed / 100;
+                    }
                     Navigator.of(context).pop(
                       _CreateShopResult(
                         code: code,
@@ -437,6 +509,8 @@ class TsaDetailPage extends StatelessWidget {
                             double.tryParse(lngController.text.trim()) ??
                             picked?.longitude,
                         filer: filer,
+                        discountEnabled: discountEnabled,
+                        discountPct: discountPct,
                         dsfId: selectedDsf,
                         schedule: schedule,
                       ),
@@ -458,7 +532,8 @@ class TsaDetailPage extends StatelessWidget {
       'name': result.name,
       'area': result.area,
       'filer': result.filer,
-      'discountPct': result.filer ? 0.05 : 0.025,
+      'discountEnabled': result.discountEnabled,
+      'discountPct': result.discountEnabled ? result.discountPct : 0.0,
       'assignedDsfId': result.dsfId ?? '',
       'schedule': result.schedule,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -480,6 +555,9 @@ class TsaDetailPage extends StatelessWidget {
       'shopId': shopId,
       'code': result.code,
       'name': result.name,
+      'filer': result.filer,
+      'discountEnabled': result.discountEnabled,
+      'discountPct': result.discountEnabled ? result.discountPct : 0.0,
       if (result.area.isNotEmpty) 'area': result.area,
       if (result.lat != null && result.lng != null)
         'location': {'lat': result.lat, 'lng': result.lng},
@@ -530,14 +608,18 @@ class TsaDetailPage extends StatelessWidget {
                     final code = (data['code'] as String?) ?? doc.id;
                     final name = (data['name'] as String?) ?? '';
                     final title = '$code ${name.isEmpty ? '' : '• $name'}';
-                    return RadioListTile<String>(
-                      value: doc.id,
-                      groupValue: selectedId,
-                      onChanged: (v) => setState(() => selectedId = v),
+                    final isSelected = selectedId == doc.id;
+                    return ListTile(
+                      onTap: () => setState(() => selectedId = doc.id),
                       title: Text(title),
                       subtitle: (data['area'] as String?)?.isNotEmpty == true
                           ? Text(data['area'] as String)
                           : null,
+                      trailing: Icon(
+                        isSelected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                      ),
                     );
                   },
                 ),
@@ -633,15 +715,26 @@ class TsaDetailPage extends StatelessWidget {
           title: const Text('Pick visiting days'),
           content: Wrap(
             spacing: 8,
-            children: working.keys
-                .map(
-                  (d) => FilterChip(
-                    label: Text(d.toUpperCase()),
-                    selected: working[d] == true,
-                    onSelected: (v) => working[d] = v,
+            children: working.keys.map((d) {
+              final selected = working[d] == true;
+              return FilterChip(
+                label: Text(
+                  d.toUpperCase(),
+                  style: TextStyle(
+                    color: selected ? AppTheme.antiFlashWhite : AppTheme.ink,
+                    fontWeight: FontWeight.w600,
                   ),
-                )
-                .toList(),
+                ),
+                showCheckmark: false,
+                selectedColor: AppTheme.bangladeshGreen,
+                backgroundColor: AppTheme.skySoft,
+                side: BorderSide(
+                  color: selected ? AppTheme.darkGreen : AppTheme.accentSoft,
+                ),
+                selected: selected,
+                onSelected: (v) => working[d] = v,
+              );
+            }).toList(),
           ),
           actions: [
             TextButton(
@@ -747,6 +840,14 @@ class TsaDetailPage extends StatelessWidget {
                 final title = '$code ${name.isEmpty ? '' : '• $name'}';
 
                 return GlassCard(
+                  onTap: () => Get.toNamed(
+                    AppRoutes.seedShopDetail,
+                    arguments: {
+                      'tsaId': tsaId,
+                      'shopId': doc.id,
+                      'shopTitle': title,
+                    },
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -811,6 +912,8 @@ class _CreateShopResult {
   final double? lat;
   final double? lng;
   final bool filer;
+  final bool discountEnabled;
+  final double discountPct;
   final String? dsfId;
   final Map<String, bool> schedule;
 
@@ -821,6 +924,8 @@ class _CreateShopResult {
     this.lat,
     this.lng,
     this.filer = false,
+    this.discountEnabled = true,
+    this.discountPct = 0,
     this.dsfId,
     this.schedule = const {},
   });
@@ -866,7 +971,7 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
       });
       return;
     }
-    if (_tryMoveToSharedLocation(trimmed)) return;
+    if (await _tryMoveToSharedLocation(trimmed)) return;
 
     setState(() {
       _isSearching = true;
@@ -958,8 +1063,8 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
     _mapController.move(_center, 16);
   }
 
-  bool _tryMoveToSharedLocation(String raw) {
-    final parsed = MapLocationUrlParser.tryParse(raw);
+  Future<bool> _tryMoveToSharedLocation(String raw) async {
+    final parsed = await MapLocationUrlParser.tryParseSmart(raw);
     if (parsed == null) return false;
     setState(() {
       _center = LatLng(parsed.lat, parsed.lng);

@@ -88,6 +88,7 @@ class DutyBinding extends Bindings {
         Get.find<DutyRepositoryImpl>(),
         Get.find<BackgroundTrackingService>(),
         Get.find<BuildDailyReportUseCase>(),
+        FirebaseFirestore.instance,
       ),
     );
 

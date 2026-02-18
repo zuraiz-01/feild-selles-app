@@ -85,7 +85,14 @@ class AdminDsfsPage extends StatelessWidget {
                 final waitLabel = waitSeconds == null
                     ? null
                     : '${(waitSeconds ~/ 60).toString().padLeft(2, '0')}:${(waitSeconds % 60).toString().padLeft(2, '0')}';
+                final photoUrl = (data['photoUrl'] as String?)?.trim();
                 return GlassCard(
+                  onTap: () => _openForm(
+                    context,
+                    dsfCol: dsfCol,
+                    existingId: doc.id,
+                    existing: data,
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -99,7 +106,17 @@ class AdminDsfsPage extends StatelessWidget {
                           color: AppTheme.accentSoft,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.badge, color: AppTheme.accent),
+                        clipBehavior: Clip.antiAlias,
+                        child: photoUrl == null || photoUrl.isEmpty
+                            ? const Icon(Icons.badge, color: AppTheme.accent)
+                            : Image.network(
+                                photoUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.badge,
+                                  color: AppTheme.accent,
+                                ),
+                              ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(

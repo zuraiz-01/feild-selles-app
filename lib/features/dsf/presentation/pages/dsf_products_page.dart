@@ -60,9 +60,9 @@ class DsfProductsPage extends StatelessWidget {
                     if (product.brand != null) 'Brand ${product.brand}',
                     if (product.unit != null) 'Unit ${product.unit}',
                     if (product.price != null)
-                      'Rate ${product.price!.toStringAsFixed(2)}',
+                      'Rate Rs ${product.price!.toStringAsFixed(2)}/L',
                     if (product.stock != null)
-                      'Stock ${product.stock!.toStringAsFixed(2)}',
+                      'Stock ${product.stock!.toStringAsFixed(2)} L',
                   ];
 
                   return Padding(

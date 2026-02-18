@@ -381,6 +381,10 @@ class TsaListPage extends StatelessWidget {
                   final sheetName = (data['sheetName'] as String?) ?? '';
 
                   return GlassCard(
+                    onTap: () => Get.toNamed(
+                      AppRoutes.seedTsaAccount,
+                      arguments: {'tsaId': doc.id, 'tsaName': name},
+                    ),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 14,

@@ -1,7 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -114,7 +116,7 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
       });
       return;
     }
-    if (_tryMoveToSharedLocation(trimmed)) return;
+    if (await _tryMoveToSharedLocation(trimmed)) return;
 
     setState(() {
       _isSearching = true;
@@ -208,8 +210,8 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
     _mapController.move(_center, 15);
   }
 
-  bool _tryMoveToSharedLocation(String raw) {
-    final parsed = MapLocationUrlParser.tryParse(raw);
+  Future<bool> _tryMoveToSharedLocation(String raw) async {
+    final parsed = await MapLocationUrlParser.tryParseSmart(raw);
     if (parsed == null) return false;
     setState(() {
       _center = LatLng(parsed.lat, parsed.lng);
@@ -365,7 +367,7 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
                       circles: [
                         CircleMarker(
                           point: _center,
-                          color: AppTheme.accent.withOpacity(0.15),
+                          color: AppTheme.accent.withValues(alpha: 0.15),
                           borderColor: AppTheme.accent,
                           borderStrokeWidth: 2,
                           radius: _radius,
@@ -481,12 +483,18 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   final _officeRadius = TextEditingController();
   final _shopWaitMinutes = TextEditingController();
   final _shopWaitSeconds = TextEditingController();
+  final _imagePicker = ImagePicker();
 
   bool _isWorking = false;
   bool _isEditMode = false;
+  bool _isPhotoUploading = false;
   String? _status;
   DsfAccount? _lastAccount;
-  bool _showPassword = false;
+  bool _showCredentialPassword = false;
+  bool _showFormPassword = false;
+  String? _photoUrl;
+  bool _removePhotoOnSave = false;
+  Map<String, String>? _editSnapshot;
   String? _loadedOfficeFor;
   final List<_RecentOfficeLocation> _recentLocations = [];
   _RecentOfficeLocation? _selectedRecent;
@@ -638,6 +646,165 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     });
   }
 
+  Widget _buildProfileAvatar({double size = 56}) {
+    final url = _photoUrl?.trim();
+    final hasPhoto = url != null && url.isNotEmpty;
+    final borderRadius = BorderRadius.circular(size / 2.5);
+    if (!hasPhoto) {
+      return Container(
+        height: size,
+        width: size,
+        decoration: BoxDecoration(
+          color: AppTheme.skySoft,
+          borderRadius: borderRadius,
+        ),
+        child: const Icon(Icons.person, color: AppTheme.sky),
+      );
+    }
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: Image.network(
+        url,
+        height: size,
+        width: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          decoration: BoxDecoration(
+            color: AppTheme.skySoft,
+            borderRadius: borderRadius,
+          ),
+          child: const Icon(Icons.person, color: AppTheme.sky),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadProfilePhoto({required String tsaId}) async {
+    if (_isPhotoUploading) return;
+    final picked = await _imagePicker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1280,
+    );
+    if (picked == null) return;
+
+    setState(() {
+      _isPhotoUploading = true;
+      _status = null;
+    });
+    try {
+      final bytes = await picked.readAsBytes();
+      if (bytes.isEmpty) {
+        throw StateError('Selected image is empty.');
+      }
+      final ref = FirebaseStorage.instance.ref().child(
+        'dsf_profiles/$tsaId/profile.jpg',
+      );
+      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+      final url = await ref.getDownloadURL();
+      setState(() {
+        _photoUrl = url;
+        _removePhotoOnSave = false;
+        _status = _lastAccount == null
+            ? 'Photo attached. Create account to save it.'
+            : 'Photo ready. Press Update to save changes.';
+      });
+    } catch (e) {
+      setState(() {
+        _status = 'Photo upload failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPhotoUploading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _removeProfilePhoto({required bool hasExistingAccount}) async {
+    final current = _photoUrl?.trim();
+    if (current == null || current.isEmpty) return;
+    if (_isPhotoUploading) return;
+
+    setState(() {
+      _isPhotoUploading = true;
+      _status = null;
+    });
+    try {
+      try {
+        await FirebaseStorage.instance.refFromURL(current).delete();
+      } catch (_) {
+        // ignore storage deletion errors; Firestore value removal is enough
+      }
+      setState(() {
+        _photoUrl = null;
+        _removePhotoOnSave = hasExistingAccount;
+        _status = hasExistingAccount
+            ? 'Photo removed. Press Update to save changes.'
+            : 'Photo removed.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPhotoUploading = false;
+        });
+      }
+    }
+  }
+
+  void _captureEditSnapshot() {
+    _editSnapshot = {
+      'name': _name.text,
+      'email': _email.text,
+      'password': _password.text,
+      'distributorId': _distributorId.text,
+      'photoUrl': _photoUrl ?? '',
+      'removePhotoOnSave': _removePhotoOnSave ? '1' : '0',
+      'officeLat': _officeLat.text,
+      'officeLng': _officeLng.text,
+      'officeRadius': _officeRadius.text,
+      'waitMinutes': _shopWaitMinutes.text,
+      'waitSeconds': _shopWaitSeconds.text,
+    };
+  }
+
+  void _restoreEditSnapshot() {
+    final snap = _editSnapshot;
+    if (snap == null) return;
+    _name.text = snap['name'] ?? '';
+    _email.text = snap['email'] ?? '';
+    _password.text = snap['password'] ?? '';
+    _distributorId.text = snap['distributorId'] ?? '';
+    _photoUrl = (snap['photoUrl'] ?? '').trim().isEmpty
+        ? null
+        : snap['photoUrl'];
+    _removePhotoOnSave = snap['removePhotoOnSave'] == '1';
+    _officeLat.text = snap['officeLat'] ?? '';
+    _officeLng.text = snap['officeLng'] ?? '';
+    _officeRadius.text = snap['officeRadius'] ?? '';
+    _shopWaitMinutes.text = snap['waitMinutes'] ?? '';
+    _shopWaitSeconds.text = snap['waitSeconds'] ?? '';
+  }
+
+  void _enterEditMode() {
+    setState(() {
+      _captureEditSnapshot();
+      _status = null;
+      _isEditMode = true;
+      _showFormPassword = false;
+    });
+  }
+
+  void _cancelEditMode() {
+    setState(() {
+      _restoreEditSnapshot();
+      _status = null;
+      _isEditMode = false;
+      _showFormPassword = false;
+    });
+  }
+
   void _syncControllers({
     required String tsaId,
     required String tsaName,
@@ -651,19 +818,27 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
           _lastAccount!.password != account.password ||
           _lastAccount!.name != account.name ||
           _lastAccount!.distributorId != account.distributorId ||
+          _lastAccount!.photoUrl != account.photoUrl ||
           _lastAccount!.shopVisitWaitSeconds != account.shopVisitWaitSeconds;
-      if (hasChanged) {
+      if (hasChanged && !_isEditMode) {
         _name.text = account.name.isEmpty ? tsaName : account.name;
         _email.text = account.email;
-        _password.text = account.password;
+        if (account.password.isNotEmpty || _password.text.trim().isEmpty) {
+          _password.text = account.password;
+        }
         _distributorId.text = account.distributorId.isEmpty
             ? tsaId
             : account.distributorId;
+        _photoUrl = account.photoUrl;
+        _removePhotoOnSave = false;
         _setWaitControllersFromTotalSeconds(
           account.shopVisitWaitSeconds ?? _defaultShopWaitSeconds,
         );
       }
       _lastAccount = account;
+      if (!_isEditMode) {
+        _loadOfficeGeofence(_distributorId.text.trim());
+      }
       return;
     }
 
@@ -672,7 +847,12 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       _email.text = _service.emailForTsa(tsaId);
       _password.text = '';
       _distributorId.text = tsaId;
+      _photoUrl = null;
+      _removePhotoOnSave = false;
       _setWaitControllersFromTotalSeconds(_defaultShopWaitSeconds);
+      if (!_isEditMode) {
+        _loadOfficeGeofence(_distributorId.text.trim());
+      }
     }
   }
 
@@ -705,6 +885,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         email: _email.text,
         password: _password.text,
         distributorId: _distributorId.text,
+        photoUrl: _photoUrl,
         officeLat: officeLat,
         officeLng: officeLng,
         officeRadiusMeters: officeRadius,
@@ -712,6 +893,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       );
       _status = 'Created DSF: ${account.email}';
       _isEditMode = false;
+      _removePhotoOnSave = false;
     } catch (e) {
       _status = 'Create failed: $e';
     } finally {
@@ -730,6 +912,19 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       final officeLat = double.tryParse(_officeLat.text.trim());
       final officeLng = double.tryParse(_officeLng.text.trim());
       final officeRadius = double.tryParse(_officeRadius.text.trim());
+      final password = _password.text.trim();
+      if (officeLat == null || officeLng == null || officeRadius == null) {
+        setState(() {
+          _status = 'Office geofence (lat/lng/radius) is required.';
+        });
+        return;
+      }
+      if (password.isEmpty) {
+        setState(() {
+          _status = 'Password is required.';
+        });
+        return;
+      }
       final shopWaitSeconds = _readWaitSecondsFromInputs();
       if (shopWaitSeconds == null) {
         setState(() {
@@ -742,8 +937,10 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         tsaId: tsaId,
         name: _name.text,
         email: _email.text,
-        password: _password.text,
+        password: password,
         distributorId: _distributorId.text,
+        photoUrl: _photoUrl,
+        clearPhoto: _removePhotoOnSave,
         officeLat: officeLat,
         officeLng: officeLng,
         officeRadiusMeters: officeRadius,
@@ -751,6 +948,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       );
       _status = 'Updated DSF: ${account.email}';
       _isEditMode = false;
+      _removePhotoOnSave = false;
     } catch (e) {
       _status = 'Update failed: $e';
     } finally {
@@ -770,6 +968,8 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       _status = 'Deleted DSF account for TSA';
       _lastAccount = null;
       _isEditMode = false;
+      _photoUrl = null;
+      _removePhotoOnSave = false;
     } catch (e) {
       _status = 'Delete failed: $e';
     } finally {
@@ -777,6 +977,30 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         setState(() => _isWorking = false);
       }
     }
+  }
+
+  Future<void> _confirmDelete({required String tsaId}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete DSF account'),
+        content: const Text(
+          'This will permanently delete this DSF login and profile. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _delete(tsaId: tsaId);
   }
 
   @override
@@ -789,8 +1013,6 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     if (tsaId.isEmpty) {
       return const Scaffold(body: Center(child: Text('Missing tsaId')));
     }
-
-    _loadOfficeGeofence(_distributorId.text.trim());
 
     return Scaffold(
       appBar: AppBar(
@@ -831,18 +1053,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            height: 46,
-                            width: 46,
-                            decoration: BoxDecoration(
-                              color: AppTheme.skySoft,
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: const Icon(
-                              Icons.person,
-                              color: AppTheme.sky,
-                            ),
-                          ),
+                          _buildProfileAvatar(size: 52),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -865,6 +1076,47 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                         ],
                       ),
                       const SizedBox(height: 12),
+                      if (isEditable)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _isPhotoUploading
+                                  ? null
+                                  : () => _pickAndUploadProfilePhoto(
+                                      tsaId: tsaId,
+                                    ),
+                              icon: _isPhotoUploading
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.photo_library_outlined),
+                              label: Text(
+                                _photoUrl == null ||
+                                        (_photoUrl?.trim().isEmpty ?? true)
+                                    ? 'Add photo'
+                                    : 'Update photo',
+                              ),
+                            ),
+                            if (_photoUrl != null &&
+                                (_photoUrl?.trim().isNotEmpty ?? false))
+                              OutlinedButton.icon(
+                                onPressed: _isPhotoUploading
+                                    ? null
+                                    : () => _removeProfilePhoto(
+                                        hasExistingAccount: account != null,
+                                      ),
+                                icon: const Icon(Icons.delete_outline),
+                                label: const Text('Delete photo'),
+                              ),
+                          ],
+                        ),
+                      const SizedBox(height: 12),
                       ExpansionTile(
                         title: const Text('Credentials'),
                         childrenPadding: const EdgeInsets.symmetric(
@@ -879,7 +1131,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                             children: [
                               Expanded(
                                 child: SelectableText(
-                                  _showPassword
+                                  _showCredentialPassword
                                       ? 'Password: ${account?.password ?? _password.text}'
                                       : 'Password: ••••••••',
                                 ),
@@ -887,15 +1139,16 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                               IconButton(
                                 onPressed: () {
                                   setState(() {
-                                    _showPassword = !_showPassword;
+                                    _showCredentialPassword =
+                                        !_showCredentialPassword;
                                   });
                                 },
                                 icon: Icon(
-                                  _showPassword
+                                  _showCredentialPassword
                                       ? Icons.visibility_off
                                       : Icons.visibility,
                                 ),
-                                tooltip: _showPassword
+                                tooltip: _showCredentialPassword
                                     ? 'Hide password'
                                     : 'Show password',
                               ),
@@ -933,22 +1186,22 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       TextField(
                         controller: _password,
                         readOnly: !isEditable,
-                        obscureText: !_showPassword,
+                        obscureText: !_showFormPassword,
                         decoration: InputDecoration(
                           labelText: 'Password',
                           prefixIcon: const Icon(Icons.lock_outline),
                           suffixIcon: IconButton(
                             onPressed: () {
                               setState(() {
-                                _showPassword = !_showPassword;
+                                _showFormPassword = !_showFormPassword;
                               });
                             },
                             icon: Icon(
-                              _showPassword
+                              _showFormPassword
                                   ? Icons.visibility_off
                                   : Icons.visibility,
                             ),
-                            tooltip: _showPassword
+                            tooltip: _showFormPassword
                                 ? 'Hide password'
                                 : 'Show password',
                           ),
@@ -1035,7 +1288,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 12),
                       if (_recentLoaded && _recentLocations.isNotEmpty) ...[
                         DropdownButtonFormField<_RecentOfficeLocation>(
-                          value: _selectedRecent,
+                          initialValue: _selectedRecent,
                           decoration: const InputDecoration(
                             labelText: 'Recent locations',
                             prefixIcon: Icon(Icons.history),
@@ -1076,9 +1329,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                           children: [
                             Expanded(
                               child: ElevatedButton(
-                                onPressed: _isWorking
-                                    ? null
-                                    : () => setState(() => _isEditMode = true),
+                                onPressed: _isWorking ? null : _enterEditMode,
                                 child: const Text('Edit'),
                               ),
                             ),
@@ -1087,7 +1338,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                               child: OutlinedButton(
                                 onPressed: _isWorking
                                     ? null
-                                    : () => _delete(tsaId: tsaId),
+                                    : () => _confirmDelete(tsaId: tsaId),
                                 child: const Text('Delete'),
                               ),
                             ),
@@ -1107,9 +1358,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: OutlinedButton(
-                                onPressed: _isWorking
-                                    ? null
-                                    : () => setState(() => _isEditMode = false),
+                                onPressed: _isWorking ? null : _cancelEditMode,
                                 child: const Text('Cancel'),
                               ),
                             ),

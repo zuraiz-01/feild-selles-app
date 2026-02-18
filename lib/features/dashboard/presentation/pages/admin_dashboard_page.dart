@@ -13,6 +13,7 @@ class AdminDashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 20,
@@ -54,10 +55,13 @@ class AdminDashboardPage extends StatelessWidget {
             style: TextButton.styleFrom(
               foregroundColor: AppTheme.ink,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              minimumSize: const Size(96, 42),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
-              backgroundColor: AppTheme.accentSoft,
+              backgroundColor: isDark
+                  ? AppTheme.skySoft.withValues(alpha: 0.7)
+                  : AppTheme.accentSoft,
             ),
           ),
           const SizedBox(width: 12),
@@ -128,10 +132,10 @@ class AdminDashboardPage extends StatelessWidget {
                       ),
                       _AdminAction(
                         order: 4,
-                        icon: Icons.auto_awesome,
-                        title: 'Experiments',
-                        subtitle: 'Coming soon.',
-                        onTap: () {},
+                        icon: Icons.admin_panel_settings_outlined,
+                        title: 'Admin Accounts',
+                        subtitle: 'Create admin logins.',
+                        onTap: () => Get.toNamed(AppRoutes.bootstrapAccounts),
                       ),
                     ],
                   ),

@@ -10,7 +10,6 @@ import '../../features/dashboard/presentation/pages/admin_dsfs_page.dart';
 import '../../features/dashboard/presentation/pages/admin_shops_page.dart';
 import '../../features/dashboard/presentation/pages/admin_products_page.dart';
 import '../../features/dashboard/presentation/pages/admin_map_page.dart';
-import '../../features/dashboard/presentation/pages/admin_seed_sample_page.dart';
 import '../../features/dashboard/presentation/pages/distributor_dashboard_page.dart';
 import '../../features/dsf/presentation/pages/dsf_home_page.dart';
 import '../../features/dsf/presentation/pages/dsf_add_order_page.dart';
@@ -19,9 +18,7 @@ import '../../features/dsf/presentation/pages/shops_to_visit_page.dart';
 import '../../features/dsf/presentation/pages/dsf_shop_visit_page.dart';
 import '../../features/dsf/presentation/pages/dsf_products_page.dart';
 import '../../features/duty/presentation/bindings/duty_binding.dart';
-import '../../features/seed_import/presentation/bindings/seed_import_binding.dart';
 import '../../features/seed_import/presentation/bindings/seed_tsa_binding.dart';
-import '../../features/seed_import/presentation/pages/seed_import_page.dart';
 import '../../features/seed_import/presentation/pages/shop_detail_page.dart';
 import '../../features/seed_import/presentation/pages/tsa_account_page.dart';
 import '../../features/seed_import/presentation/pages/tsa_detail_page.dart';
@@ -55,15 +52,6 @@ abstract class AppPages {
       page: () => const AdminProductsPage(),
     ),
     GetPage(name: AppRoutes.adminMap, page: () => const AdminMapPage()),
-    GetPage(
-      name: AppRoutes.adminSeedSample,
-      page: () => const AdminSeedSamplePage(),
-    ),
-    GetPage(
-      name: AppRoutes.seedImport,
-      page: () => const SeedImportPage(),
-      binding: SeedImportBinding(),
-    ),
     GetPage(name: AppRoutes.seedTsaList, page: () => const TsaListPage()),
     GetPage(
       name: AppRoutes.seedTsaAccount,

@@ -98,11 +98,17 @@ class AdminProductsPage extends StatelessWidget {
                   if (product.brand != null) 'Brand ${product.brand}',
                   if (product.unit != null) 'Unit ${product.unit}',
                   if (product.price != null)
-                    'Rate ${product.price!.toStringAsFixed(2)}',
+                    'Rate Rs ${product.price!.toStringAsFixed(2)}/L',
                   if (product.stock != null)
-                    'Stock ${product.stock!.toStringAsFixed(2)}',
+                    'Stock ${product.stock!.toStringAsFixed(2)} L',
                 ];
                 return GlassCard(
+                  onTap: () => _openForm(
+                    context,
+                    productsCol: productsCol,
+                    existingId: doc.id,
+                    existing: doc.data(),
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -237,7 +243,7 @@ class AdminProductsPage extends StatelessWidget {
 
     for (final p in defaults) {
       final ref = productsCol.doc(p['id']!);
-      final product = ProductModel(sku: p['sku']!, name: p['name']!);
+      final product = ProductModel(sku: p['sku']!, name: p['name']!, unit: 'L');
       batch.set(ref, product.toMap(), SetOptions(merge: true));
     }
     await batch.commit();
@@ -304,8 +310,9 @@ class AdminProductsPage extends StatelessWidget {
                   TextField(
                     controller: rateController,
                     decoration: const InputDecoration(
-                      labelText: 'Rate',
+                      labelText: 'Rate (per liter)',
                       prefixText: 'Rs ',
+                      suffixText: '/L',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(
                       decimal: true,
@@ -326,7 +333,12 @@ class AdminProductsPage extends StatelessWidget {
                 final sku = skuController.text.trim();
                 final rate = double.tryParse(rateController.text.trim());
                 if (name.isEmpty || sku.isEmpty) return;
-                final product = ProductModel(sku: sku, name: name, price: rate);
+                final product = ProductModel(
+                  sku: sku,
+                  name: name,
+                  price: rate,
+                  unit: 'L',
+                );
                 await productsCol
                     .doc(existingId ?? sku)
                     .set(product.toMap(), SetOptions(merge: true));

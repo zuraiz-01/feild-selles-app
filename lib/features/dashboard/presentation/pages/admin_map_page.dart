@@ -8,22 +8,6 @@ import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 
-Stream<String> _dsfNameStream(String dsfId) {
-  final col = FirebaseFirestore.instance.collection('dsfAccounts');
-  return col.doc(dsfId).snapshots().asyncMap((doc) async {
-    final direct = doc.data();
-    final directName = (direct?['name'] as String?)?.trim();
-    if (directName != null && directName.isNotEmpty) return directName;
-
-    final snap = await col.where('uid', isEqualTo: dsfId).limit(1).get();
-    if (snap.docs.isEmpty) return 'Unknown DSF';
-    final data = snap.docs.first.data();
-    final name = (data['name'] as String?)?.trim();
-    if (name != null && name.isNotEmpty) return name;
-    return 'Unknown DSF';
-  });
-}
-
 class AdminMapPage extends StatefulWidget {
   const AdminMapPage({super.key});
 
@@ -64,6 +48,12 @@ class _AdminMapPageState extends State<AdminMapPage> {
     if (raw is Timestamp) return raw.toDate();
     if (raw is String) return DateTime.tryParse(raw);
     return null;
+  }
+
+  DateTime _activeSessionMoment(_ActiveSession session) {
+    return session.updatedAt ??
+        session.lastPointAt ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
   }
 
   @override
@@ -184,7 +174,8 @@ class _AdminMapPageState extends State<AdminMapPage> {
                           );
                         }
 
-                        final validDsfIds = <String>{};
+                        final canonicalByDsfId = <String, String>{};
+                        final displayNameByDsfId = <String, String>{};
                         for (final dsfDoc in dsfSnap.data!.docs) {
                           final data = dsfDoc.data();
                           final dsfAccountId = dsfDoc.id.trim();
@@ -192,29 +183,52 @@ class _AdminMapPageState extends State<AdminMapPage> {
                               (data['tsaId'] as String?)?.trim() ??
                               dsfAccountId;
                           if (!tsaIds.contains(linkedTsaId)) continue;
+                          final uid = (data['uid'] as String?)?.trim();
+                          final canonicalId = (uid != null && uid.isNotEmpty)
+                              ? uid
+                              : dsfAccountId;
+                          if (canonicalId.isEmpty) continue;
 
                           if (dsfAccountId.isNotEmpty) {
-                            validDsfIds.add(dsfAccountId);
+                            canonicalByDsfId[dsfAccountId] = canonicalId;
                           }
-                          final uid = (data['uid'] as String?)?.trim();
+                          canonicalByDsfId[canonicalId] = canonicalId;
                           if (uid != null && uid.isNotEmpty) {
-                            validDsfIds.add(uid);
+                            canonicalByDsfId[uid] = canonicalId;
                           }
+
+                          final dsfName = (data['name'] as String?)?.trim();
+                          displayNameByDsfId[canonicalId] =
+                              (dsfName != null && dsfName.isNotEmpty)
+                              ? dsfName
+                              : (dsfAccountId.isNotEmpty
+                                    ? dsfAccountId
+                                    : canonicalId);
                         }
 
-                        activeByDsf.removeWhere(
-                          (dsfId, _) => !validDsfIds.contains(dsfId),
-                        );
+                        final canonicalActiveByDsf = <String, _ActiveSession>{};
+                        for (final entry in activeByDsf.entries) {
+                          final canonicalId = canonicalByDsfId[entry.key];
+                          if (canonicalId == null) continue;
+                          final existing = canonicalActiveByDsf[canonicalId];
+                          if (existing == null ||
+                              _activeSessionMoment(
+                                entry.value,
+                              ).isAfter(_activeSessionMoment(existing))) {
+                            canonicalActiveByDsf[canonicalId] = entry.value;
+                          }
+                        }
 
                         final recentByDsf = <String, _RecentUserActivity>{};
                         for (final doc in alertsSnap.data!.docs) {
                           final data = doc.data();
                           final dsfId = (data['dsfId'] as String?)?.trim();
                           if (dsfId == null || dsfId.isEmpty) continue;
-                          if (!validDsfIds.contains(dsfId)) continue;
-                          if (recentByDsf.containsKey(dsfId)) continue;
-                          recentByDsf[dsfId] = _RecentUserActivity(
-                            dsfId: dsfId,
+                          final canonicalId = canonicalByDsfId[dsfId];
+                          if (canonicalId == null) continue;
+                          if (recentByDsf.containsKey(canonicalId)) continue;
+                          recentByDsf[canonicalId] = _RecentUserActivity(
+                            dsfId: canonicalId,
                             type: (data['type'] as String?)?.trim(),
                             createdAt: _toDate(data['createdAt']),
                             shopTitle: (data['shopTitle'] as String?)?.trim(),
@@ -222,6 +236,7 @@ class _AdminMapPageState extends State<AdminMapPage> {
                                 ?.trim(),
                             distanceMeters: (data['distanceMeters'] as num?)
                                 ?.toDouble(),
+                            missedShops: (data['missedShops'] as num?)?.toInt(),
                             point: _latLngFromMap({
                               'lat': data['lat'],
                               'lng': data['lng'],
@@ -229,13 +244,19 @@ class _AdminMapPageState extends State<AdminMapPage> {
                           );
                         }
 
-                        final options = <String>[];
-                        options.addAll(recentByDsf.keys);
-                        for (final dsfId in activeByDsf.keys) {
-                          if (!options.contains(dsfId)) {
-                            options.add(dsfId);
-                          }
-                        }
+                        final optionSet = <String>{};
+                        optionSet.addAll(recentByDsf.keys);
+                        optionSet.addAll(canonicalActiveByDsf.keys);
+                        final options = optionSet.toList()
+                          ..sort((a, b) {
+                            final aName = (displayNameByDsfId[a] ?? a)
+                                .toLowerCase();
+                            final bName = (displayNameByDsfId[b] ?? b)
+                                .toLowerCase();
+                            final byName = aName.compareTo(bName);
+                            if (byName != 0) return byName;
+                            return a.compareTo(b);
+                          });
 
                         if (options.isEmpty) {
                           return const Center(
@@ -245,13 +266,13 @@ class _AdminMapPageState extends State<AdminMapPage> {
 
                         _ensureSelection(options);
                         final selectedId = _selectedDsfId ?? options.first;
-                        final active = activeByDsf[selectedId];
+                        final active = canonicalActiveByDsf[selectedId];
                         final recent = recentByDsf[selectedId];
+                        final selectedName =
+                            displayNameByDsfId[selectedId] ?? selectedId;
                         final inactiveCount =
-                            (options.length - activeByDsf.length).clamp(
-                              0,
-                              options.length,
-                            );
+                            (options.length - canonicalActiveByDsf.length)
+                                .clamp(0, options.length);
 
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -338,24 +359,20 @@ class _AdminMapPageState extends State<AdminMapPage> {
                                           const SizedBox(width: 10),
                                       itemBuilder: (context, index) {
                                         final dsfId = options[index];
-                                        return StreamBuilder<String>(
-                                          stream: _dsfNameStream(dsfId),
-                                          builder: (context, nameSnap) {
-                                            final name = nameSnap.data ?? dsfId;
-                                            return _UserPickerChip(
-                                              name: name,
-                                              subtitle:
-                                                  recentByDsf[dsfId]?.title ??
-                                                  'No recent alert',
-                                              isActive: activeByDsf.containsKey(
-                                                dsfId,
-                                              ),
-                                              selected: dsfId == selectedId,
-                                              onTap: () {
-                                                setState(
-                                                  () => _selectedDsfId = dsfId,
-                                                );
-                                              },
+                                        return _UserPickerChip(
+                                          key: ValueKey('user-chip-$dsfId'),
+                                          name:
+                                              displayNameByDsfId[dsfId] ??
+                                              dsfId,
+                                          subtitle:
+                                              recentByDsf[dsfId]?.title ??
+                                              'No recent alert',
+                                          isActive: canonicalActiveByDsf
+                                              .containsKey(dsfId),
+                                          selected: dsfId == selectedId,
+                                          onTap: () {
+                                            setState(
+                                              () => _selectedDsfId = dsfId,
                                             );
                                           },
                                         );
@@ -369,6 +386,7 @@ class _AdminMapPageState extends State<AdminMapPage> {
                             Expanded(
                               child: _SelectedUserView(
                                 dsfId: selectedId,
+                                displayName: selectedName,
                                 active: active,
                                 recent: recent,
                                 pointFromMap: _latLngFromMap,
@@ -441,6 +459,7 @@ class _UserPickerChip extends StatelessWidget {
   final VoidCallback onTap;
 
   const _UserPickerChip({
+    super.key,
     required this.name,
     required this.subtitle,
     required this.isActive,
@@ -530,6 +549,7 @@ class _UserPickerChip extends StatelessWidget {
 
 class _SelectedUserView extends StatelessWidget {
   final String dsfId;
+  final String displayName;
   final _ActiveSession? active;
   final _RecentUserActivity? recent;
   final LatLng? Function(dynamic raw) pointFromMap;
@@ -537,6 +557,7 @@ class _SelectedUserView extends StatelessWidget {
 
   const _SelectedUserView({
     required this.dsfId,
+    required this.displayName,
     required this.active,
     required this.recent,
     required this.pointFromMap,
@@ -565,133 +586,172 @@ class _SelectedUserView extends StatelessWidget {
     return '${_formatDate(dt)} - ${_formatSince(dt)}';
   }
 
+  double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim());
+    return null;
+  }
+
+  Stream<List<LatLng>> _trackingPointsStream(String dutyId) {
+    return FirebaseFirestore.instance
+        .collection('locationSessions')
+        .doc(dutyId)
+        .collection('points')
+        .orderBy('recordedAt', descending: false)
+        .limit(1200)
+        .snapshots()
+        .map((snap) {
+          final points = <LatLng>[];
+          for (final doc in snap.docs) {
+            final data = doc.data();
+            final lat = _toDouble(data['lat']);
+            final lng = _toDouble(data['lng']);
+            if (lat == null || lng == null) continue;
+            points.add(LatLng(lat, lng));
+          }
+          return points;
+        });
+  }
+
   @override
   Widget build(BuildContext context) {
     final dutyStream = FirebaseFirestore.instance
         .collection('duties')
         .where('dsfId', isEqualTo: dsfId)
-        .orderBy('startAt', descending: true)
-        .limit(1)
+        // Avoid composite-index dependency (`where + orderBy`) on web.
+        // We fetch recent duties and pick latest in memory by `startAt`.
+        .limit(80)
         .snapshots();
 
-    return StreamBuilder<String>(
-      stream: _dsfNameStream(dsfId),
-      builder: (context, nameSnap) {
-        final displayName = nameSnap.data ?? dsfId;
-        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: dutyStream,
-          builder: (context, dutySnap) {
-            String? dutyId;
-            Map<String, dynamic>? duty;
-            if (dutySnap.hasData && dutySnap.data!.docs.isNotEmpty) {
-              final doc = dutySnap.data!.docs.first;
-              dutyId = doc.id;
-              duty = doc.data();
-            }
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: dutyStream,
+      builder: (context, dutySnap) {
+        final resolvedName = displayName.trim().isEmpty ? dsfId : displayName;
+        String? dutyId;
+        Map<String, dynamic>? duty;
+        if (dutySnap.hasData && dutySnap.data!.docs.isNotEmpty) {
+          final docs = dutySnap.data!.docs.toList()
+            ..sort((a, b) {
+              final aStart = dateFromRaw(a.data()['startAt']);
+              final bStart = dateFromRaw(b.data()['startAt']);
+              if (aStart == null && bStart == null) return 0;
+              if (aStart == null) return 1;
+              if (bStart == null) return -1;
+              return bStart.compareTo(aStart);
+            });
+          final doc = docs.first;
+          dutyId = doc.id;
+          duty = doc.data();
+        }
 
-            final dutyStatus =
-                (duty?['status'] as String?) ??
-                (active != null ? 'active' : 'ended');
-            final startLoc = pointFromMap(duty?['startLocation']);
-            final endLoc = pointFromMap(duty?['endLocation']);
+        final dutyStatus =
+            (duty?['status'] as String?) ??
+            (active != null ? 'active' : 'ended');
+        final startLoc = pointFromMap(duty?['startLocation']);
+        final endLoc = pointFromMap(duty?['endLocation']);
 
-            final lastUpdated =
-                active?.updatedAt ?? active?.lastPointAt ?? recent?.createdAt;
+        final lastUpdated =
+            active?.updatedAt ?? active?.lastPointAt ?? recent?.createdAt;
 
-            if (dutyId == null) {
-              return ListView(
-                children: [
-                  _UserSummaryCard(
-                    name: displayName,
-                    status: dutyStatus,
-                    updatedAt: lastUpdated,
-                    updatedLabel: _formatDateWithSince(lastUpdated),
-                  ),
-                  const SizedBox(height: 12),
-                  _MapCard(
-                    title: displayName,
-                    status: dutyStatus,
-                    subtitle: 'No duty session found.',
-                    point:
-                        active?.lastPoint ??
-                        recent?.point ??
-                        endLoc ??
-                        startLoc ??
-                        const LatLng(24.8607, 67.0011),
-                    pointLabel: active?.lastPoint != null
-                        ? 'Live location'
-                        : (recent?.point != null
-                              ? 'Recent alert location'
-                              : 'Last known location'),
-                  ),
-                  const SizedBox(height: 12),
-                  _ActivityCard(
-                    lastVisitTitle: 'No shop visits yet.',
-                    lastVisitTime: 'N/A',
-                    lastAlertTitle: recent?.title ?? 'No recent alerts.',
-                    lastAlertTime: _formatDateWithSince(recent?.createdAt),
-                  ),
-                  const SizedBox(height: 12),
-                  _AlertsAdminActionsCard(dsfId: dsfId, dsfName: displayName),
-                  if (recent?.type == 'dsf_logout') ...[
-                    const SizedBox(height: 12),
-                    _LogoutPendingShopsCard(
-                      dsfId: dsfId,
-                      dutyId: dutyId,
-                      duty: duty,
-                      recent: recent,
-                      dateFromRaw: dateFromRaw,
-                    ),
-                  ],
-                ],
-              );
-            }
-
-            final visitsStream = FirebaseFirestore.instance
-                .collection('duties')
-                .doc(dutyId)
-                .collection('shopVisits')
-                .orderBy('submittedAt', descending: true)
-                .limit(1)
-                .snapshots();
-
-            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: visitsStream,
-              builder: (context, visitSnap) {
-                Map<String, dynamic>? visit;
-                if (visitSnap.hasData && visitSnap.data!.docs.isNotEmpty) {
-                  visit = visitSnap.data!.docs.first.data();
-                }
-
-                final visitPoint = pointFromMap(visit?['submittedLocation']);
-                final mapPoint =
-                    visitPoint ??
+        if (dutyId == null) {
+          return ListView(
+            children: [
+              _UserSummaryCard(
+                name: resolvedName,
+                status: dutyStatus,
+                updatedAt: lastUpdated,
+                updatedLabel: _formatDateWithSince(lastUpdated),
+              ),
+              const SizedBox(height: 12),
+              _MapCard(
+                title: resolvedName,
+                status: dutyStatus,
+                subtitle: 'No duty session found.',
+                point:
                     active?.lastPoint ??
                     recent?.point ??
                     endLoc ??
                     startLoc ??
-                    const LatLng(24.8607, 67.0011);
+                    const LatLng(24.8607, 67.0011),
+                pointLabel: active?.lastPoint != null
+                    ? 'Live location'
+                    : (recent?.point != null
+                          ? 'Recent alert location'
+                          : 'Last known location'),
+              ),
+              const SizedBox(height: 12),
+              _ActivityCard(
+                lastVisitTitle: 'No shop visits yet.',
+                lastVisitTime: 'N/A',
+                lastAlertTitle: recent?.title ?? 'No recent alerts.',
+                lastAlertTime: _formatDateWithSince(recent?.createdAt),
+              ),
+              const SizedBox(height: 12),
+              _AlertsAdminActionsCard(dsfId: dsfId, dsfName: resolvedName),
+              if (recent?.type == 'dsf_logout') ...[
+                const SizedBox(height: 12),
+                _LogoutPendingShopsCard(
+                  dsfId: dsfId,
+                  dutyId: dutyId,
+                  duty: duty,
+                  recent: recent,
+                  dateFromRaw: dateFromRaw,
+                ),
+              ],
+            ],
+          );
+        }
 
-                final visitTitle =
-                    (visit?['shopTitle'] as String?)?.trim().isNotEmpty == true
-                    ? visit!['shopTitle'] as String
-                    : 'No shop visits yet.';
-                final visitSubmittedAt = dateFromRaw(visit?['submittedAt']);
-                final visitTime = _formatDateWithSince(visitSubmittedAt);
-                final alertTitle = recent?.title ?? 'No recent alerts.';
-                final alertTime = _formatDateWithSince(recent?.createdAt);
+        final visitsStream = FirebaseFirestore.instance
+            .collection('duties')
+            .doc(dutyId)
+            .collection('shopVisits')
+            .orderBy('submittedAt', descending: true)
+            .limit(1)
+            .snapshots();
+        final trackingPointsStream = _trackingPointsStream(dutyId);
 
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: visitsStream,
+          builder: (context, visitSnap) {
+            Map<String, dynamic>? visit;
+            if (visitSnap.hasData && visitSnap.data!.docs.isNotEmpty) {
+              visit = visitSnap.data!.docs.first.data();
+            }
+
+            final visitPoint = pointFromMap(visit?['submittedLocation']);
+            final mapPoint =
+                visitPoint ??
+                active?.lastPoint ??
+                recent?.point ??
+                endLoc ??
+                startLoc ??
+                const LatLng(24.8607, 67.0011);
+
+            final visitTitle =
+                (visit?['shopTitle'] as String?)?.trim().isNotEmpty == true
+                ? visit!['shopTitle'] as String
+                : 'No shop visits yet.';
+            final visitSubmittedAt = dateFromRaw(visit?['submittedAt']);
+            final visitTime = _formatDateWithSince(visitSubmittedAt);
+            final alertTitle = recent?.title ?? 'No recent alerts.';
+            final alertTime = _formatDateWithSince(recent?.createdAt);
+
+            return StreamBuilder<List<LatLng>>(
+              stream: trackingPointsStream,
+              builder: (context, trackingSnap) {
+                final trailPoints = trackingSnap.data ?? const <LatLng>[];
                 return ListView(
                   children: [
                     _UserSummaryCard(
-                      name: displayName,
+                      name: resolvedName,
                       status: dutyStatus,
                       updatedAt: lastUpdated,
                       updatedLabel: _formatDateWithSince(lastUpdated),
                     ),
                     const SizedBox(height: 12),
                     _MapCard(
-                      title: displayName,
+                      title: resolvedName,
                       status: dutyStatus,
                       subtitle: 'Duty $dutyId',
                       point: mapPoint,
@@ -702,6 +762,7 @@ class _SelectedUserView extends StatelessWidget {
                                 : (recent?.point != null
                                       ? 'Recent alert location'
                                       : 'Last known location')),
+                      trailPoints: trailPoints,
                     ),
                     const SizedBox(height: 12),
                     _ActivityCard(
@@ -711,7 +772,10 @@ class _SelectedUserView extends StatelessWidget {
                       lastAlertTime: alertTime,
                     ),
                     const SizedBox(height: 12),
-                    _AlertsAdminActionsCard(dsfId: dsfId, dsfName: displayName),
+                    _AlertsAdminActionsCard(
+                      dsfId: dsfId,
+                      dsfName: resolvedName,
+                    ),
                     if (recent?.type == 'dsf_logout') ...[
                       const SizedBox(height: 12),
                       _LogoutPendingShopsCard(
@@ -829,13 +893,18 @@ class _AlertsAdminActionsCardState extends State<_AlertsAdminActionsCard> {
           ? const SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
             )
           : const Icon(Icons.delete_outline),
       label: Text(_isDeleting ? 'Deleting...' : 'Delete Alerts'),
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFFD9534F),
+        backgroundColor: Theme.of(context).colorScheme.error,
         foregroundColor: Colors.white,
+        minimumSize: const Size(0, 48),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
 
@@ -1168,6 +1237,7 @@ class _MapCard extends StatefulWidget {
   final String subtitle;
   final LatLng point;
   final String pointLabel;
+  final List<LatLng> trailPoints;
 
   const _MapCard({
     required this.title,
@@ -1175,6 +1245,7 @@ class _MapCard extends StatefulWidget {
     required this.subtitle,
     required this.point,
     required this.pointLabel,
+    this.trailPoints = const <LatLng>[],
   });
 
   @override
@@ -1187,6 +1258,21 @@ class _MapCardState extends State<_MapCard> {
 
   static const double _minZoom = 4;
   static const double _maxZoom = 18;
+
+  bool _samePoint(LatLng a, LatLng b) {
+    return (a.latitude - b.latitude).abs() < 0.000001 &&
+        (a.longitude - b.longitude).abs() < 0.000001;
+  }
+
+  @override
+  void didUpdateWidget(covariant _MapCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_samePoint(oldWidget.point, widget.point)) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.move(widget.point, _zoom);
+    });
+  }
 
   void _changeZoom(double delta) {
     final nextZoom = (_zoom + delta).clamp(_minZoom, _maxZoom).toDouble();
@@ -1228,6 +1314,10 @@ class _MapCardState extends State<_MapCard> {
     final isActive = widget.status == 'active';
     final statusColor = isActive ? AppTheme.accent : AppTheme.mutedInk;
     final statusBg = isActive ? AppTheme.accentSoft : AppTheme.skySoft;
+    final mapPath = <LatLng>[...widget.trailPoints];
+    if (mapPath.isEmpty || !_samePoint(mapPath.last, widget.point)) {
+      mapPath.add(widget.point);
+    }
 
     return GlassCard(
       padding: const EdgeInsets.all(16),
@@ -1306,8 +1396,34 @@ class _MapCardState extends State<_MapCard> {
                               'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                           userAgentPackageName: 'field_sales_app',
                         ),
+                        if (mapPath.length > 1)
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: mapPath,
+                                strokeWidth: 4,
+                                color: AppTheme.sky,
+                              ),
+                            ],
+                          ),
                         MarkerLayer(
                           markers: [
+                            if (mapPath.length > 1)
+                              Marker(
+                                point: mapPath.first,
+                                width: 22,
+                                height: 22,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.sky,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             Marker(
                               point: widget.point,
                               width: 48,
@@ -1404,6 +1520,10 @@ class _MapCardState extends State<_MapCard> {
                     'Lat ${widget.point.latitude.toStringAsFixed(5)}, Lng ${widget.point.longitude.toStringAsFixed(5)}',
               ),
               _MetaPill(icon: Icons.info_outline, label: widget.pointLabel),
+              _MetaPill(
+                icon: Icons.alt_route,
+                label: 'Trail ${mapPath.length} points',
+              ),
               _MetaPill(
                 icon: Icons.zoom_in,
                 label: 'Zoom ${_zoom.toStringAsFixed(1)}x',
@@ -1689,6 +1809,7 @@ class _RecentUserActivity {
   final String? shopTitle;
   final String? locationLabel;
   final double? distanceMeters;
+  final int? missedShops;
   final LatLng? point;
 
   const _RecentUserActivity({
@@ -1698,6 +1819,7 @@ class _RecentUserActivity {
     this.shopTitle,
     this.locationLabel,
     this.distanceMeters,
+    this.missedShops,
     this.point,
   });
 
@@ -1723,6 +1845,16 @@ class _RecentUserActivity {
           return 'Visited $shopTitle';
         }
         return 'Visited shop';
+      case 'shop_added':
+        if (shopTitle != null && shopTitle!.isNotEmpty) {
+          return 'Added shop $shopTitle';
+        }
+        return 'Added shop';
+      case 'shops_missed':
+        if (missedShops != null) {
+          return 'Missed ${missedShops!} shops';
+        }
+        return 'Missed assigned shops';
       default:
         return 'Activity update';
     }

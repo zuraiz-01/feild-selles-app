@@ -38,7 +38,7 @@ class ProductModel {
       name: name,
       category: _stringOrNull(data['category']),
       brand: _stringOrNull(data['brand']),
-      unit: _stringOrNull(data['unit']),
+      unit: _normalizeUnit(_stringOrNull(data['unit'])),
       price: _doubleOrNull(data['price']),
       stock: _doubleOrNull(data['stock']),
     );
@@ -60,6 +60,19 @@ class ProductModel {
     if (value is! String) return null;
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static String _normalizeUnit(String? unitRaw) {
+    final unit = unitRaw?.trim() ?? '';
+    if (unit.isEmpty) return 'L';
+    final lower = unit.toLowerCase();
+    if (lower == 'l' ||
+        lower == 'ltr' ||
+        lower == 'liter' ||
+        lower == 'litre') {
+      return 'L';
+    }
+    return unit;
   }
 
   static double? _doubleOrNull(Object? value) {

@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../controllers/auth_controller.dart';
-import '../../../../app/routes/app_routes.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -20,11 +18,6 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final controller = Get.find<AuthController>();
-    const String bootstrapSecret = String.fromEnvironment(
-      'BOOTSTRAP_SECRET',
-      defaultValue: '',
-    );
-    final bool showBootstrap = kDebugMode || bootstrapSecret.isNotEmpty;
 
     return Scaffold(
       body: AppShell(
@@ -143,14 +136,6 @@ class _LoginPageState extends State<LoginPage> {
                                       )
                                     : const Text('Login'),
                               ),
-                              if (showBootstrap) ...[
-                                const SizedBox(height: 8),
-                                TextButton(
-                                  onPressed: () =>
-                                      Get.toNamed(AppRoutes.bootstrapAccounts),
-                                  child: const Text('Bootstrap accounts'),
-                                ),
-                              ],
                             ],
                           ),
                         ),

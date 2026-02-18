@@ -4,7 +4,6 @@ abstract class AppRoutes {
   static const bootstrapAccounts = '/bootstrap/accounts';
 
   static const adminDashboard = '/admin/dashboard';
-  static const seedImport = '/admin/seed-import';
   static const seedTsaList = '/seed/tsas';
   static const seedTsaAccount = '/seed/tsa/account';
   static const seedTsaDetail = '/seed/tsa';
@@ -20,5 +19,4 @@ abstract class AppRoutes {
   static const adminShops = '/admin/shops';
   static const adminProducts = '/admin/products';
   static const adminMap = '/admin/map';
-  static const adminSeedSample = '/admin/seed-sample';
 }

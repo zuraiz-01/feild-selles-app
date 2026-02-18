@@ -13,6 +13,7 @@ class DsfAccount {
   final String password;
   final String uid;
   final String distributorId;
+  final String? photoUrl;
   final int? shopVisitWaitSeconds;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -24,6 +25,7 @@ class DsfAccount {
     required this.password,
     required this.uid,
     required this.distributorId,
+    this.photoUrl,
     this.shopVisitWaitSeconds,
     this.createdAt,
     this.updatedAt,
@@ -45,6 +47,11 @@ class DsfAccount {
       return null;
     }
 
+    final rawPhotoUrl = data['photoUrl'];
+    final photoUrl = rawPhotoUrl is String && rawPhotoUrl.trim().isNotEmpty
+        ? rawPhotoUrl.trim()
+        : null;
+
     return DsfAccount(
       tsaId: (data['tsaId'] as String?) ?? doc.id,
       name: (data['name'] as String?) ?? '',
@@ -52,6 +59,7 @@ class DsfAccount {
       password: (data['password'] as String?) ?? '',
       uid: (data['uid'] as String?) ?? '',
       distributorId: (data['distributorId'] as String?) ?? '',
+      photoUrl: photoUrl,
       shopVisitWaitSeconds: readInt(data['shopVisitWaitSeconds']),
       createdAt: readTimestamp(data['createdAt']),
       updatedAt: readTimestamp(data['updatedAt']),
@@ -96,6 +104,7 @@ class DsfAccountService {
     required String tsaId,
     required String name,
     required String distributorId,
+    String? photoUrl,
     double? officeLat,
     double? officeLng,
     double? officeRadiusMeters,
@@ -117,6 +126,7 @@ class DsfAccountService {
     final finalDistributorId = distributorId.trim().isEmpty
         ? tsaId
         : distributorId.trim();
+    final cleanedPhotoUrl = photoUrl?.trim();
 
     final signUpUri = Uri.parse(
       'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${DefaultFirebaseOptions.web.apiKey}',
@@ -168,6 +178,8 @@ class DsfAccountService {
       'password': finalPassword,
       'uid': localId,
       'distributorId': finalDistributorId,
+      if (cleanedPhotoUrl != null && cleanedPhotoUrl.isNotEmpty)
+        'photoUrl': cleanedPhotoUrl,
       if (shopVisitWaitSeconds != null && shopVisitWaitSeconds >= 0)
         'shopVisitWaitSeconds': shopVisitWaitSeconds,
       'createdAt': now,
@@ -184,6 +196,8 @@ class DsfAccountService {
     required String email,
     required String password,
     required String distributorId,
+    String? photoUrl,
+    bool clearPhoto = false,
     double? officeLat,
     double? officeLng,
     double? officeRadiusMeters,
@@ -199,6 +213,7 @@ class DsfAccountService {
     final newDistributorId = distributorId.trim().isEmpty
         ? tsaId
         : distributorId.trim();
+    final cleanedPhotoUrl = photoUrl?.trim();
 
     if (newEmail.isEmpty || newPassword.isEmpty) {
       throw StateError('Email and password are required');
@@ -232,6 +247,10 @@ class DsfAccountService {
       'email': newEmail,
       'password': newPassword,
       'distributorId': newDistributorId,
+      if (clearPhoto)
+        'photoUrl': FieldValue.delete()
+      else if (cleanedPhotoUrl != null && cleanedPhotoUrl.isNotEmpty)
+        'photoUrl': cleanedPhotoUrl,
       if (shopVisitWaitSeconds != null && shopVisitWaitSeconds >= 0)
         'shopVisitWaitSeconds': shopVisitWaitSeconds,
       'updatedAt': FieldValue.serverTimestamp(),

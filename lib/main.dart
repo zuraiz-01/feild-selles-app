@@ -34,7 +34,9 @@ class MyApp extends StatelessWidget {
     if (skipFirebase) {
       return GetMaterialApp(
         title: 'Field Sales App (Preview)',
-        theme: AppTheme.buildTheme(),
+        theme: AppTheme.buildLightTheme(),
+        darkTheme: AppTheme.buildDarkTheme(),
+        themeMode: ThemeMode.system,
         initialBinding: InitialBinding(),
         debugShowCheckedModeBanner: false,
         home: const Scaffold(
@@ -50,10 +52,13 @@ class MyApp extends StatelessWidget {
 
     return GetMaterialApp(
       title: 'Field Sales App',
-      theme: AppTheme.buildTheme(),
+      theme: AppTheme.buildLightTheme(),
+      darkTheme: AppTheme.buildDarkTheme(),
+      themeMode: ThemeMode.system,
       initialBinding: InitialBinding(),
       initialRoute: AppRoutes.splash,
       getPages: AppPages.pages,
+      debugShowCheckedModeBanner: false,
     );
   }
 }

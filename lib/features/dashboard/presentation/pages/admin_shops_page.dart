@@ -88,8 +88,17 @@ class AdminShopsPage extends StatelessWidget {
                 final name = (data['name'] as String?) ?? '';
                 final filer = (data['filer'] as bool?) ?? false;
                 final discount = (data['discountPct'] as num?)?.toDouble();
+                final discountEnabled =
+                    (data['discountEnabled'] as bool?) ?? true;
+                final effectiveDiscount = discount ?? (filer ? 0.05 : 0.025);
                 final assigned = (data['assignedDsfId'] as String?) ?? '';
                 return GlassCard(
+                  onTap: () => _openForm(
+                    context,
+                    shopsCol: shopsCol,
+                    existingId: doc.id,
+                    existing: data,
+                  ),
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
@@ -121,8 +130,10 @@ class AdminShopsPage extends StatelessWidget {
                             Text(
                               [
                                 filer ? 'Filer' : 'Non-filer',
-                                if (discount != null)
-                                  'Discount ${(discount * 100).toStringAsFixed(1)}%',
+                                if (!discountEnabled)
+                                  'Discount off'
+                                else
+                                  'Discount ${(effectiveDiscount * 100).toStringAsFixed(1)}%',
                                 if (assigned.isNotEmpty) 'DSF $assigned',
                               ].join(' · '),
                               style: const TextStyle(color: AppTheme.mutedInk),
@@ -193,6 +204,7 @@ class AdminShopsPage extends StatelessWidget {
     Map<String, dynamic>? existing,
   }) async {
     final dsfOptions = await _loadDsfs();
+    if (!context.mounted) return;
     final codeController = TextEditingController(
       text: existing?['code'] as String? ?? existingId ?? '',
     );
@@ -230,6 +242,12 @@ class AdminShopsPage extends StatelessWidget {
       ].map((d) => MapEntry(d, (existing?['schedule'] as Map?)?[d] == true)),
     );
     bool filer = existing?['filer'] == true;
+    bool discountEnabled = (existing?['discountEnabled'] as bool?) ?? true;
+    final existingDiscountPct = (existing?['discountPct'] as num?)?.toDouble();
+    final discountController = TextEditingController(
+      text: _formatPercentInput(existingDiscountPct ?? (filer ? 0.05 : 0.025)),
+    );
+    bool isDeleting = false;
 
     await showDialog<void>(
       context: context,
@@ -245,7 +263,7 @@ class AdminShopsPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      _SectionCard(
+                      _sectionCard(
                         child: Column(
                           children: [
                             TextField(
@@ -273,16 +291,45 @@ class AdminShopsPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _SectionCard(
-                        child: SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          value: filer,
-                          onChanged: (v) => setState(() => filer = v),
-                          title: const Text('Filer (5% discount)'),
+                      _sectionCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: filer,
+                              onChanged: (v) => setState(() => filer = v),
+                              title: const Text('Filer shop'),
+                            ),
+                            const SizedBox(height: 6),
+                            SwitchListTile(
+                              contentPadding: EdgeInsets.zero,
+                              value: discountEnabled,
+                              onChanged: (v) {
+                                setState(() {
+                                  discountEnabled = v;
+                                });
+                              },
+                              title: const Text('Allow discount'),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: discountController,
+                              enabled: discountEnabled,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: const InputDecoration(
+                                labelText: 'Discount %',
+                                suffixText: '%',
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _SectionCard(
+                      _sectionCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -315,23 +362,29 @@ class AdminShopsPage extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 10),
-                            OutlinedButton.icon(
-                              onPressed: () async {
-                                final res = await _pickOnMap(
-                                  context,
-                                  initial: picked ?? initialLoc,
-                                );
-                                if (res == null) return;
-                                setState(() {
-                                  picked = res;
-                                  latController.text = res.latitude
-                                      .toStringAsFixed(6);
-                                  lngController.text = res.longitude
-                                      .toStringAsFixed(6);
-                                });
-                              },
-                              icon: const Icon(Icons.map_outlined),
-                              label: const Text('Pick on map'),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                onPressed: () async {
+                                  final res = await _pickOnMap(
+                                    context,
+                                    initial: picked ?? initialLoc,
+                                  );
+                                  if (res == null) return;
+                                  setState(() {
+                                    picked = res;
+                                    latController.text = res.latitude
+                                        .toStringAsFixed(6);
+                                    lngController.text = res.longitude
+                                        .toStringAsFixed(6);
+                                  });
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  alignment: Alignment.centerLeft,
+                                ),
+                                icon: const Icon(Icons.map_outlined),
+                                label: const Text('Pick on map'),
+                              ),
                             ),
                             if (picked != null) ...[
                               const SizedBox(height: 6),
@@ -344,7 +397,7 @@ class AdminShopsPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _SectionCard(
+                      _sectionCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -371,7 +424,7 @@ class AdminShopsPage extends StatelessWidget {
                                     ];
 
                                 return DropdownButtonFormField<String>(
-                                  value:
+                                  initialValue:
                                       (selectedDsf != null &&
                                           dsfOptions.any(
                                             (o) => o.id == selectedDsf,
@@ -391,9 +444,7 @@ class AdminShopsPage extends StatelessWidget {
                                               child: DefaultTextStyle.merge(
                                                 overflow: TextOverflow.ellipsis,
                                                 maxLines: 1,
-                                                child:
-                                                    item.child ??
-                                                    const SizedBox(),
+                                                child: item.child,
                                               ),
                                             ),
                                           )
@@ -432,7 +483,7 @@ class AdminShopsPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      _SectionCard(
+                      _sectionCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -444,19 +495,34 @@ class AdminShopsPage extends StatelessWidget {
                             Wrap(
                               spacing: 8,
                               runSpacing: 6,
-                              children: schedule.keys
-                                  .map(
-                                    (d) => FilterChip(
-                                      label: Text(d.toUpperCase()),
-                                      selected: schedule[d] == true,
-                                      onSelected: (v) {
-                                        setState(() {
-                                          schedule[d] = v;
-                                        });
-                                      },
+                              children: schedule.keys.map((d) {
+                                final selected = schedule[d] == true;
+                                return FilterChip(
+                                  label: Text(
+                                    d.toUpperCase(),
+                                    style: TextStyle(
+                                      color: selected
+                                          ? AppTheme.antiFlashWhite
+                                          : AppTheme.ink,
+                                      fontWeight: FontWeight.w600,
                                     ),
-                                  )
-                                  .toList(),
+                                  ),
+                                  showCheckmark: false,
+                                  selectedColor: AppTheme.bangladeshGreen,
+                                  backgroundColor: AppTheme.skySoft,
+                                  side: BorderSide(
+                                    color: selected
+                                        ? AppTheme.darkGreen
+                                        : AppTheme.accentSoft,
+                                  ),
+                                  selected: selected,
+                                  onSelected: (v) {
+                                    setState(() {
+                                      schedule[d] = v;
+                                    });
+                                  },
+                                );
+                              }).toList(),
                             ),
                           ],
                         ),
@@ -465,95 +531,169 @@ class AdminShopsPage extends StatelessWidget {
                   ),
                 ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
               actions: [
-                if (existingId != null)
-                  TextButton.icon(
-                    onPressed: () async {
-                      final shopCode =
-                          (existing?['code'] as String?)?.trim().isNotEmpty ==
-                              true
-                          ? (existing?['code'] as String).trim()
-                          : existingId;
-                      final shopName =
-                          (existing?['name'] as String?)?.trim() ?? '';
-                      final confirmed = await _confirmDeleteShop(
-                        context,
-                        shopCode: shopCode,
-                        shopName: shopName,
-                      );
-                      if (!confirmed) return;
+                SizedBox(
+                  width: double.infinity,
+                  child: Row(
+                    children: [
+                      if (existingId != null)
+                        OutlinedButton.icon(
+                          onPressed: isDeleting
+                              ? null
+                              : () async {
+                                  final shopCode =
+                                      (existing?['code'] as String?)
+                                              ?.trim()
+                                              .isNotEmpty ==
+                                          true
+                                      ? (existing?['code'] as String).trim()
+                                      : existingId;
+                                  final shopName =
+                                      (existing?['name'] as String?)?.trim() ??
+                                      '';
+                                  final confirmed = await _confirmDeleteShop(
+                                    context,
+                                    shopCode: shopCode,
+                                    shopName: shopName,
+                                  );
+                                  if (!confirmed) return;
 
-                      final deletedCount = await _deleteShopEverywhere(
-                        shopId: existingId,
-                      );
-
-                      if (context.mounted) Navigator.of(context).pop();
-                      Get.snackbar(
-                        'Deleted',
-                        'Shop $shopCode removed ($deletedCount records).',
-                        snackPosition: SnackPosition.BOTTOM,
-                      );
-                    },
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    label: const Text(
-                      'Delete',
-                      style: TextStyle(color: Colors.red),
-                    ),
-                  ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () async {
-                    final code = codeController.text.trim();
-                    if (code.isEmpty) return;
-                    if (selectedDsf != null &&
-                        !schedule.values.any((v) => v == true)) {
-                      final pickedSchedule = await _pickSchedule(
-                        context,
-                        schedule,
-                      );
-                      if (pickedSchedule == null ||
-                          !pickedSchedule.values.any((v) => v == true)) {
-                        return;
-                      }
-                      schedule = pickedSchedule;
-                      setState(() {});
-                    }
-                    final payload = <String, dynamic>{
-                      'code': code,
-                      'name': nameController.text.trim(),
-                      'area': areaController.text.trim(),
-                      'filer': filer,
-                      'discountPct': filer ? 0.05 : 0.025,
-                      'assignedDsfId': selectedDsf ?? '',
-                      'assignedDsfUid': _resolveSelectedDsfUid(
-                        dsfOptions,
-                        selectedDsf,
+                                  setState(() => isDeleting = true);
+                                  try {
+                                    final deletedCount =
+                                        await _deleteShopEverywhere(
+                                          shopId: existingId,
+                                        );
+                                    if (context.mounted) {
+                                      Navigator.of(context).pop();
+                                    }
+                                    Get.snackbar(
+                                      'Deleted',
+                                      'Shop $shopCode removed ($deletedCount records).',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                  } catch (e) {
+                                    Get.snackbar(
+                                      'Delete failed',
+                                      e.toString(),
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                  } finally {
+                                    if (context.mounted) {
+                                      setState(() => isDeleting = false);
+                                    }
+                                  }
+                                },
+                          icon: isDeleting
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.delete_outline),
+                          label: const Text('Delete'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.redAccent),
+                          ),
+                        ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: isDeleting
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
                       ),
-                      'schedule': schedule,
-                      'updatedAt': FieldValue.serverTimestamp(),
-                    };
-                    final lat = double.tryParse(latController.text.trim());
-                    final lng = double.tryParse(lngController.text.trim());
-                    if (lat != null && lng != null) {
-                      payload['location'] = {'lat': lat, 'lng': lng};
-                    }
-                    if (existingId == null) {
-                      payload['createdAt'] = FieldValue.serverTimestamp();
-                    }
-                    await shopsCol
-                        .doc(existingId ?? code.toLowerCase())
-                        .set(payload, SetOptions(merge: true));
-                    if (context.mounted) Navigator.of(context).pop();
-                    Get.snackbar(
-                      'Saved',
-                      'Shop $code saved',
-                      snackPosition: SnackPosition.BOTTOM,
-                    );
-                  },
-                  child: const Text('Save'),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: isDeleting
+                            ? null
+                            : () async {
+                                final code = codeController.text.trim();
+                                if (code.isEmpty) return;
+                                if (selectedDsf != null &&
+                                    !schedule.values.any((v) => v == true)) {
+                                  final pickedSchedule = await _pickSchedule(
+                                    context,
+                                    schedule,
+                                  );
+                                  if (pickedSchedule == null ||
+                                      !pickedSchedule.values.any(
+                                        (v) => v == true,
+                                      )) {
+                                    return;
+                                  }
+                                  schedule = pickedSchedule;
+                                  setState(() {});
+                                }
+                                double discountPct = 0;
+                                if (discountEnabled) {
+                                  final parsed = double.tryParse(
+                                    discountController.text.trim(),
+                                  );
+                                  if (parsed == null ||
+                                      parsed.isNaN ||
+                                      parsed < 0 ||
+                                      parsed > 100) {
+                                    Get.snackbar(
+                                      'Invalid discount',
+                                      'Enter discount between 0 and 100.',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                    );
+                                    return;
+                                  }
+                                  discountPct = parsed / 100;
+                                }
+                                final payload = <String, dynamic>{
+                                  'code': code,
+                                  'name': nameController.text.trim(),
+                                  'area': areaController.text.trim(),
+                                  'filer': filer,
+                                  'discountEnabled': discountEnabled,
+                                  'discountPct': discountPct,
+                                  'assignedDsfId': selectedDsf ?? '',
+                                  'assignedDsfUid': _resolveSelectedDsfUid(
+                                    dsfOptions,
+                                    selectedDsf,
+                                  ),
+                                  'schedule': schedule,
+                                  'updatedAt': FieldValue.serverTimestamp(),
+                                };
+                                final lat = double.tryParse(
+                                  latController.text.trim(),
+                                );
+                                final lng = double.tryParse(
+                                  lngController.text.trim(),
+                                );
+                                if (lat != null && lng != null) {
+                                  payload['location'] = {
+                                    'lat': lat,
+                                    'lng': lng,
+                                  };
+                                }
+                                if (existingId == null) {
+                                  payload['createdAt'] =
+                                      FieldValue.serverTimestamp();
+                                }
+                                await shopsCol
+                                    .doc(existingId ?? code.toLowerCase())
+                                    .set(payload, SetOptions(merge: true));
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
+                                Get.snackbar(
+                                  'Saved',
+                                  'Shop $code saved',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                );
+                              },
+                        child: const Text('Save'),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             );
@@ -665,6 +805,12 @@ class AdminShopsPage extends StatelessWidget {
     return deletedCount;
   }
 
+  String _formatPercentInput(double rate) {
+    final percent = rate * 100;
+    final rounded = percent.toStringAsFixed(2);
+    return rounded.replaceFirst(RegExp(r'\.?0+$'), '');
+  }
+
   String _readNum(Map<String, dynamic>? data, String path) {
     if (data == null) return '';
     dynamic cur = data;
@@ -747,42 +893,105 @@ class AdminShopsPage extends StatelessWidget {
     Map<String, bool> current,
   ) async {
     final working = Map<String, bool>.from(current);
-    final result = await showDialog<Map<String, bool>>(
+    final result = await showModalBottomSheet<Map<String, bool>>(
       context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Pick visiting days'),
-          content: Wrap(
-            spacing: 8,
-            children: working.keys
-                .map(
-                  (d) => FilterChip(
-                    label: Text(d.toUpperCase()),
-                    selected: working[d] == true,
-                    onSelected: (v) {
-                      working[d] = v;
-                    },
-                  ),
-                )
-                .toList(),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(context).pop(working),
-              child: const Text('Save'),
-            ),
-          ],
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return SafeArea(
+              child: Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppTheme.card,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Schedule',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: working.keys.map((d) {
+                        final selected = working[d] == true;
+                        return FilterChip(
+                          label: Text(
+                            d.toUpperCase(),
+                            style: TextStyle(
+                              color: selected
+                                  ? AppTheme.antiFlashWhite
+                                  : AppTheme.ink,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          showCheckmark: false,
+                          selectedColor: AppTheme.bangladeshGreen,
+                          backgroundColor: AppTheme.skySoft,
+                          side: BorderSide(
+                            color: selected
+                                ? AppTheme.darkGreen
+                                : AppTheme.accentSoft,
+                          ),
+                          selected: selected,
+                          onSelected: (v) {
+                            setState(() {
+                              working[d] = v;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancel'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () => Navigator.of(
+                            context,
+                          ).pop(Map<String, bool>.from(working)),
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
     return result;
   }
 
-  Widget _SectionCard({required Widget child}) {
+  Widget _sectionCard({required Widget child}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -842,7 +1051,7 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
       });
       return;
     }
-    if (_tryMoveToSharedLocation(trimmed)) return;
+    if (await _tryMoveToSharedLocation(trimmed)) return;
 
     setState(() {
       _isSearching = true;
@@ -934,8 +1143,8 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
     _mapController.move(_center, 16);
   }
 
-  bool _tryMoveToSharedLocation(String raw) {
-    final parsed = MapLocationUrlParser.tryParse(raw);
+  Future<bool> _tryMoveToSharedLocation(String raw) async {
+    final parsed = await MapLocationUrlParser.tryParseSmart(raw);
     if (parsed == null) return false;
     setState(() {
       _center = LatLng(parsed.lat, parsed.lng);

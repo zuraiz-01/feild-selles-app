@@ -54,7 +54,10 @@ class AuthRepositoryImpl implements AuthRepository {
     );
 
     if (effectiveRole == UserRole.dsf) {
-      await _enforceOfficeGeofence(distributorId: profileModel.distributorId);
+      await _enforceOfficeGeofence(
+        distributorId: profileModel.distributorId,
+        action: 'Login',
+      );
       await _logAdminEvent(
         type: 'dsf_login',
         dsfId: uid,
@@ -98,7 +101,10 @@ class AuthRepositoryImpl implements AuthRepository {
     return UserRole.admin;
   }
 
-  Future<void> _enforceOfficeGeofence({required String distributorId}) async {
+  Future<void> _enforceOfficeGeofence({
+    required String distributorId,
+    required String action,
+  }) async {
     final office = await _distributorsRemote.getOfficeGeofence(distributorId);
     final Position pos = await _locationService.getCurrentPosition();
 
@@ -110,7 +116,7 @@ class AuthRepositoryImpl implements AuthRepository {
 
     if (!decision.allowed) {
       throw StateError(
-        'Login allowed only inside office. Distance: ${decision.distanceMeters.toStringAsFixed(0)}m',
+        '$action allowed only inside office. Distance: ${decision.distanceMeters.toStringAsFixed(0)}m',
       );
     }
   }
@@ -123,6 +129,10 @@ class AuthRepositoryImpl implements AuthRepository {
       throw StateError('End duty before logout');
     }
     if (profile?.role == UserRole.dsf && profile != null) {
+      await _enforceOfficeGeofence(
+        distributorId: profile.distributorId,
+        action: 'Logout',
+      );
       await _logDsfLogout(profile);
     }
     await _sessionService.clear();

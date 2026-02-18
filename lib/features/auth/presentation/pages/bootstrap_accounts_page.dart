@@ -20,40 +20,19 @@ class BootstrapAccountsPage extends StatefulWidget {
 }
 
 class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
-  static const String _bootstrapSecret = String.fromEnvironment(
-    'BOOTSTRAP_SECRET',
-    defaultValue: '',
-  );
-
   final _adminEmail = TextEditingController(text: 'admin@field.local');
   final _adminPassword = TextEditingController(text: 'Admin@12345');
   final _adminDistributorId = TextEditingController(text: 'admin');
 
-  final _dsfEmail = TextEditingController(text: 'dsf@field.local');
-  final _dsfPassword = TextEditingController(text: 'Dsf@12345');
-  final _dsfDistributorId = TextEditingController();
-  final _dsfOfficeLat = TextEditingController();
-  final _dsfOfficeLng = TextEditingController();
-  final _dsfOfficeRadius = TextEditingController(text: '250');
-
   bool _isLoading = false;
   String? _status;
   bool _showAdminPassword = false;
-  bool _showDsfPassword = false;
-
-  bool get _enabled => kDebugMode || _bootstrapSecret.isNotEmpty;
 
   @override
   void dispose() {
     _adminEmail.dispose();
     _adminPassword.dispose();
     _adminDistributorId.dispose();
-    _dsfEmail.dispose();
-    _dsfPassword.dispose();
-    _dsfDistributorId.dispose();
-    _dsfOfficeLat.dispose();
-    _dsfOfficeLng.dispose();
-    _dsfOfficeRadius.dispose();
     super.dispose();
   }
 
@@ -170,9 +149,7 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
     Future<http.Response> postJson(Uri uri, Map<String, dynamic> body) {
       return http.post(
         uri,
-        headers: <String, String>{
-          'Content-Type': 'application/json',
-        },
+        headers: <String, String>{'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
     }
@@ -242,7 +219,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
           final signInBody = await parseBody(signInRes);
           if (signInRes.statusCode < 200 || signInRes.statusCode >= 300) {
             final err = signInBody['error'];
-            final message = (err is Map<String, dynamic>) ? err['message'] : null;
+            final message = (err is Map<String, dynamic>)
+                ? err['message']
+                : null;
             if (message == 'INVALID_LOGIN_CREDENTIALS') {
               throw StateError(
                 'This email already exists but the password is wrong.\n'
@@ -278,7 +257,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
             ? (body['error']['message'] ?? body['error']).toString()
             : body.toString();
         if (usersRes.statusCode == 404 &&
-            message.toLowerCase().contains('database (default) does not exist')) {
+            message.toLowerCase().contains(
+              'database (default) does not exist',
+            )) {
           throw StateError(
             'Firestore is not enabled for this Firebase project yet.\n'
             'Open Firebase Console → Firestore Database → Create database.\n'
@@ -301,7 +282,9 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
           },
         );
         if (adminRes.statusCode < 200 || adminRes.statusCode >= 300) {
-          throw StateError('REST write adminUids/$uid failed: ${adminRes.body}');
+          throw StateError(
+            'REST write adminUids/$uid failed: ${adminRes.body}',
+          );
         }
       } else if (role == UserRole.dsf) {
         await _ensureDistributorDocViaRest(
@@ -321,7 +304,8 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
       });
     } catch (e) {
       setState(() {
-        _status = 'REST bootstrap failed: $e\n\n'
+        _status =
+            'REST bootstrap failed: $e\n\n'
             'If this is a network error, try switching network/VPN and retry.\n'
             'If Firestore write is denied, relax rules or run on an authenticated admin account.';
       });
@@ -393,24 +377,14 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
       }),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw StateError('REST write distributors/$distributorId failed: ${res.body}');
+      throw StateError(
+        'REST write distributors/$distributorId failed: ${res.body}',
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_enabled) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Bootstrap Accounts')),
-        body: const Padding(
-          padding: EdgeInsets.all(16),
-          child: Text(
-            'Bootstrap is disabled.\n\nRun in debug mode or set --dart-define=BOOTSTRAP_SECRET=...',
-          ),
-        ),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(title: const Text('Bootstrap Accounts')),
       body: AppShell(
@@ -418,8 +392,7 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
           children: [
             const SectionTitle(
               title: 'Bootstrap accounts',
-              subtitle:
-                  'Creates Auth users + profile documents for Admin and DSF roles.',
+              subtitle: 'Creates Auth user + profile document for Admin role.',
             ),
             const SizedBox(height: 12),
             if (defaultTargetPlatform == TargetPlatform.android) ...[
@@ -480,126 +453,12 @@ class _BootstrapAccountsPageState extends State<BootstrapAccountsPage> {
                     onPressed: _isLoading
                         ? null
                         : () => _createAccount(
-                              role: UserRole.admin,
-                              email: _adminEmail.text,
-                              password: _adminPassword.text,
-                              distributorId: _adminDistributorId.text,
-                            ),
+                            role: UserRole.admin,
+                            email: _adminEmail.text,
+                            password: _adminPassword.text,
+                            distributorId: _adminDistributorId.text,
+                          ),
                     child: const Text('Create Admin'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _sectionTitle('DSF'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _dsfEmail,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'DSF email',
-                      prefixIcon: Icon(Icons.alternate_email),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _dsfPassword,
-                    obscureText: !_showDsfPassword,
-                    decoration: InputDecoration(
-                      labelText: 'DSF password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _showDsfPassword = !_showDsfPassword;
-                          });
-                        },
-                        icon: Icon(
-                          _showDsfPassword
-                              ? Icons.visibility_off
-                              : Icons.visibility,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _dsfDistributorId,
-                    decoration: const InputDecoration(
-                      labelText: 'DSF distributorId (must exist in Firestore)',
-                      hintText: 'e.g. distributor_karachi_01',
-                      prefixIcon: Icon(Icons.map_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _dsfOfficeLat,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Office latitude',
-                      prefixIcon: Icon(Icons.my_location),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _dsfOfficeLng,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Office longitude',
-                      prefixIcon: Icon(Icons.my_location),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _dsfOfficeRadius,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Office radius (meters)',
-                      prefixIcon: Icon(Icons.circle_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  ElevatedButton(
-                    onPressed: _isLoading
-                        ? null
-                        : () {
-                            if (_dsfDistributorId.text.trim().isEmpty) {
-                              setState(() {
-                                _status =
-                                    'DSF distributorId is required (must match a document id in `distributors`).';
-                              });
-                              return;
-                            }
-                            final officeLat =
-                                double.tryParse(_dsfOfficeLat.text.trim());
-                            final officeLng =
-                                double.tryParse(_dsfOfficeLng.text.trim());
-                            final officeRadius =
-                                double.tryParse(_dsfOfficeRadius.text.trim());
-                            if (officeLat == null ||
-                                officeLng == null ||
-                                officeRadius == null) {
-                              setState(() {
-                                _status =
-                                    'Office geofence (lat/lng/radius) is required.';
-                              });
-                              return;
-                            }
-                            _createAccount(
-                              role: UserRole.dsf,
-                              email: _dsfEmail.text,
-                              password: _dsfPassword.text,
-                              distributorId: _dsfDistributorId.text,
-                              officeLat: officeLat,
-                              officeLng: officeLng,
-                              officeRadiusMeters: officeRadius,
-                            );
-                          },
-                    child: const Text('Create DSF'),
                   ),
                 ],
               ),
