@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../core/utils/map_location_url_parser.dart';
 
 class AdminShopsPage extends StatelessWidget {
   const AdminShopsPage({super.key});
@@ -137,6 +138,42 @@ class AdminShopsPage extends StatelessWidget {
                           existingId: doc.id,
                           existing: data,
                         ),
+                      ),
+                      IconButton(
+                        tooltip: 'Delete shop',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () async {
+                          final shopCode = code.trim().isEmpty
+                              ? doc.id
+                              : code.trim();
+                          final shopName = name.trim();
+
+                          final confirmed = await _confirmDeleteShop(
+                            context,
+                            shopCode: shopCode,
+                            shopName: shopName,
+                          );
+                          if (!confirmed) return;
+
+                          try {
+                            final deletedCount = await _deleteShopEverywhere(
+                              shopId: doc.id,
+                            );
+                            if (!context.mounted) return;
+                            Get.snackbar(
+                              'Deleted',
+                              'Shop "$shopCode" removed from $deletedCount records.',
+                              snackPosition: SnackPosition.BOTTOM,
+                            );
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            Get.snackbar(
+                              'Delete failed',
+                              e.toString(),
+                              snackPosition: SnackPosition.BOTTOM,
+                            );
+                          }
+                        },
                       ),
                     ],
                   ),
@@ -805,6 +842,8 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
       });
       return;
     }
+    if (_tryMoveToSharedLocation(trimmed)) return;
+
     setState(() {
       _isSearching = true;
       _error = null;
@@ -895,6 +934,18 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
     _mapController.move(_center, 16);
   }
 
+  bool _tryMoveToSharedLocation(String raw) {
+    final parsed = MapLocationUrlParser.tryParse(raw);
+    if (parsed == null) return false;
+    setState(() {
+      _center = LatLng(parsed.lat, parsed.lng);
+      _results = [];
+      _error = null;
+    });
+    _mapController.move(_center, 16);
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final height = MediaQuery.of(context).size.height * 0.82;
@@ -929,7 +980,7 @@ class _ShopMapPickerSheetState extends State<_ShopMapPickerSheet> {
               textInputAction: TextInputAction.search,
               onSubmitted: _searchPlace,
               decoration: InputDecoration(
-                hintText: 'Search location',
+                hintText: 'Search location or paste map URL',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _isSearching
                     ? const Padding(

@@ -188,6 +188,42 @@ class TsaListPage extends StatelessWidget {
     }
   }
 
+  Future<void> _deleteShopVisitsForTsaWithoutCollectionGroupIndex(
+    FirebaseFirestore firestore,
+    String tsaId,
+  ) async {
+    final targetTsaId = tsaId.trim();
+    if (targetTsaId.isEmpty) return;
+
+    final refsToDelete = <DocumentReference<Map<String, dynamic>>>[];
+    final dutiesSnap = await firestore.collection('duties').get();
+
+    for (final dutyDoc in dutiesSnap.docs) {
+      final visitsSnap = await dutyDoc.reference.collection('shopVisits').get();
+      for (final visitDoc in visitsSnap.docs) {
+        final visitTsaId = ((visitDoc.data()['tsaId'] as String?) ?? '').trim();
+        if (visitTsaId == targetTsaId) {
+          refsToDelete.add(visitDoc.reference);
+        }
+      }
+    }
+
+    var batch = firestore.batch();
+    var opsInBatch = 0;
+    for (final ref in refsToDelete) {
+      batch.delete(ref);
+      opsInBatch++;
+      if (opsInBatch >= 450) {
+        await batch.commit();
+        batch = firestore.batch();
+        opsInBatch = 0;
+      }
+    }
+    if (opsInBatch > 0) {
+      await batch.commit();
+    }
+  }
+
   Future<void> _deleteTsaEverywhere(String tsaId) async {
     final firestore = FirebaseFirestore.instance;
 
@@ -244,9 +280,7 @@ class TsaListPage extends StatelessWidget {
       );
     }
 
-    await _deleteDocsByQuery(
-      firestore.collectionGroup('shopVisits').where('tsaId', isEqualTo: tsaId),
-    );
+    await _deleteShopVisitsForTsaWithoutCollectionGroupIndex(firestore, tsaId);
 
     await _deleteShopSalesAndShops(firestore, tsaId);
     await _deleteDailyAssignments(firestore, tsaId);

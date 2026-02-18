@@ -46,16 +46,23 @@ class _AdminMapPageState extends State<AdminMapPage> {
     });
   }
 
+  double? _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value.trim());
+    return null;
+  }
+
   LatLng? _latLngFromMap(dynamic raw) {
     if (raw is! Map) return null;
-    final lat = raw['lat'];
-    final lng = raw['lng'];
-    if (lat is! num || lng is! num) return null;
-    return LatLng(lat.toDouble(), lng.toDouble());
+    final lat = _toDouble(raw['lat'] ?? raw['latitude']);
+    final lng = _toDouble(raw['lng'] ?? raw['longitude']);
+    if (lat == null || lng == null) return null;
+    return LatLng(lat, lng);
   }
 
   DateTime? _toDate(dynamic raw) {
     if (raw is Timestamp) return raw.toDate();
+    if (raw is String) return DateTime.tryParse(raw);
     return null;
   }
 
@@ -215,6 +222,10 @@ class _AdminMapPageState extends State<AdminMapPage> {
                                 ?.trim(),
                             distanceMeters: (data['distanceMeters'] as num?)
                                 ?.toDouble(),
+                            point: _latLngFromMap({
+                              'lat': data['lat'],
+                              'lng': data['lng'],
+                            }),
                           );
                         }
 
@@ -603,12 +614,15 @@ class _SelectedUserView extends StatelessWidget {
                     subtitle: 'No duty session found.',
                     point:
                         active?.lastPoint ??
+                        recent?.point ??
                         endLoc ??
                         startLoc ??
                         const LatLng(24.8607, 67.0011),
                     pointLabel: active?.lastPoint != null
                         ? 'Live location'
-                        : 'Last known location',
+                        : (recent?.point != null
+                              ? 'Recent alert location'
+                              : 'Last known location'),
                   ),
                   const SizedBox(height: 12),
                   _ActivityCard(
@@ -653,6 +667,7 @@ class _SelectedUserView extends StatelessWidget {
                 final mapPoint =
                     visitPoint ??
                     active?.lastPoint ??
+                    recent?.point ??
                     endLoc ??
                     startLoc ??
                     const LatLng(24.8607, 67.0011);
@@ -684,7 +699,9 @@ class _SelectedUserView extends StatelessWidget {
                           ? 'Last shop location'
                           : (active?.lastPoint != null
                                 ? 'Live location'
-                                : 'Last known location'),
+                                : (recent?.point != null
+                                      ? 'Recent alert location'
+                                      : 'Last known location')),
                     ),
                     const SizedBox(height: 12),
                     _ActivityCard(
@@ -1672,6 +1689,7 @@ class _RecentUserActivity {
   final String? shopTitle;
   final String? locationLabel;
   final double? distanceMeters;
+  final LatLng? point;
 
   const _RecentUserActivity({
     required this.dsfId,
@@ -1680,6 +1698,7 @@ class _RecentUserActivity {
     this.shopTitle,
     this.locationLabel,
     this.distanceMeters,
+    this.point,
   });
 
   String get title {

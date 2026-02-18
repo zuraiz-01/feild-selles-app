@@ -13,6 +13,7 @@ class DsfAccount {
   final String password;
   final String uid;
   final String distributorId;
+  final int? shopVisitWaitSeconds;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -23,6 +24,7 @@ class DsfAccount {
     required this.password,
     required this.uid,
     required this.distributorId,
+    this.shopVisitWaitSeconds,
     this.createdAt,
     this.updatedAt,
   });
@@ -36,6 +38,13 @@ class DsfAccount {
       return null;
     }
 
+    int? readInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value.trim());
+      return null;
+    }
+
     return DsfAccount(
       tsaId: (data['tsaId'] as String?) ?? doc.id,
       name: (data['name'] as String?) ?? '',
@@ -43,6 +52,7 @@ class DsfAccount {
       password: (data['password'] as String?) ?? '',
       uid: (data['uid'] as String?) ?? '',
       distributorId: (data['distributorId'] as String?) ?? '',
+      shopVisitWaitSeconds: readInt(data['shopVisitWaitSeconds']),
       createdAt: readTimestamp(data['createdAt']),
       updatedAt: readTimestamp(data['updatedAt']),
     );
@@ -89,6 +99,7 @@ class DsfAccountService {
     double? officeLat,
     double? officeLng,
     double? officeRadiusMeters,
+    int? shopVisitWaitSeconds,
     String? email,
     String? password,
   }) async {
@@ -100,10 +111,12 @@ class DsfAccountService {
     final finalEmail = (email?.trim().isNotEmpty ?? false)
         ? email!.trim()
         : emailForTsa(tsaId);
-    final finalPassword =
-        (password?.trim().isNotEmpty ?? false) ? password!.trim() : generatePassword();
-    final finalDistributorId =
-        distributorId.trim().isEmpty ? tsaId : distributorId.trim();
+    final finalPassword = (password?.trim().isNotEmpty ?? false)
+        ? password!.trim()
+        : generatePassword();
+    final finalDistributorId = distributorId.trim().isEmpty
+        ? tsaId
+        : distributorId.trim();
 
     final signUpUri = Uri.parse(
       'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${DefaultFirebaseOptions.web.apiKey}',
@@ -155,6 +168,8 @@ class DsfAccountService {
       'password': finalPassword,
       'uid': localId,
       'distributorId': finalDistributorId,
+      if (shopVisitWaitSeconds != null && shopVisitWaitSeconds >= 0)
+        'shopVisitWaitSeconds': shopVisitWaitSeconds,
       'createdAt': now,
       'updatedAt': now,
     }, SetOptions(merge: true));
@@ -172,6 +187,7 @@ class DsfAccountService {
     double? officeLat,
     double? officeLng,
     double? officeRadiusMeters,
+    int? shopVisitWaitSeconds,
   }) async {
     final existing = await _col.doc(tsaId).get();
     if (!existing.exists) {
@@ -180,8 +196,9 @@ class DsfAccountService {
     final current = DsfAccount.fromDoc(existing);
     final newEmail = email.trim();
     final newPassword = password.trim();
-    final newDistributorId =
-        distributorId.trim().isEmpty ? tsaId : distributorId.trim();
+    final newDistributorId = distributorId.trim().isEmpty
+        ? tsaId
+        : distributorId.trim();
 
     if (newEmail.isEmpty || newPassword.isEmpty) {
       throw StateError('Email and password are required');
@@ -215,6 +232,8 @@ class DsfAccountService {
       'email': newEmail,
       'password': newPassword,
       'distributorId': newDistributorId,
+      if (shopVisitWaitSeconds != null && shopVisitWaitSeconds >= 0)
+        'shopVisitWaitSeconds': shopVisitWaitSeconds,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
@@ -266,10 +285,7 @@ class DsfAccountService {
         'name': name,
         'distributorId': distributorId,
         'officeGeofence': {
-          'center': {
-            'lat': officeLat,
-            'lng': officeLng,
-          },
+          'center': {'lat': officeLat, 'lng': officeLng},
           'radiusMeters': officeRadiusMeters,
         },
       }, SetOptions(merge: true));
@@ -280,10 +296,7 @@ class DsfAccountService {
       'name': name,
       'distributorId': distributorId,
       'officeGeofence': {
-        'center': {
-          'lat': officeLat,
-          'lng': officeLng,
-        },
+        'center': {'lat': officeLat, 'lng': officeLng},
         'radiusMeters': officeRadiusMeters,
       },
     });
@@ -346,15 +359,10 @@ class DsfAccountService {
     }
   }
 
-  Future<http.Response> _postJson(
-    Uri uri,
-    Map<String, dynamic> body,
-  ) {
+  Future<http.Response> _postJson(Uri uri, Map<String, dynamic> body) {
     return http.post(
       uri,
-      headers: <String, String>{
-        'Content-Type': 'application/json',
-      },
+      headers: <String, String>{'Content-Type': 'application/json'},
       body: jsonEncode(body),
     );
   }

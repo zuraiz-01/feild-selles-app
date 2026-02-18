@@ -20,7 +20,7 @@ class DsfShopVisitPage extends StatefulWidget {
 }
 
 class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
-  static const Duration _minVisitDuration = Duration(seconds: 5);
+  Duration _minVisitDuration = const Duration(minutes: 5);
   double? _requiredDistanceMeters;
 
   final _stockController = TextEditingController();
@@ -48,7 +48,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   @override
   void initState() {
     super.initState();
-    _loadDsfRadius();
+    _loadDsfVisitConfig();
     _startTracking();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
@@ -66,22 +66,50 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     super.dispose();
   }
 
-  Future<void> _loadDsfRadius() async {
+  int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim());
+    return null;
+  }
+
+  Future<DocumentSnapshot<Map<String, dynamic>>?> _resolveDsfAccountDoc(
+    String uid,
+  ) async {
+    final col = FirebaseFirestore.instance.collection('dsfAccounts');
+    final direct = await col.doc(uid).get();
+    if (direct.exists) return direct;
+    final byUid = await col.where('uid', isEqualTo: uid).limit(1).get();
+    if (byUid.docs.isNotEmpty) return byUid.docs.first;
+    return null;
+  }
+
+  Future<void> _loadDsfVisitConfig() async {
     try {
       final session = Get.find<SessionService>();
       final profile = session.profile;
       if (profile == null) return;
-      final dsfDoc = await FirebaseFirestore.instance
-          .collection('dsfAccounts')
-          .doc(profile.uid)
-          .get();
-      final geo = dsfDoc.data()?['geofence'];
+      final dsfDoc = await _resolveDsfAccountDoc(profile.uid);
+      final data = dsfDoc?.data();
+      final geo = data?['geofence'];
       final rad = (geo is Map && geo['radiusMeters'] is num)
           ? (geo['radiusMeters'] as num).toDouble()
           : null;
-      _setStateSafe(() => _requiredDistanceMeters = rad ?? 120);
+      final waitSecondsRaw = _readInt(data?['shopVisitWaitSeconds']);
+      final waitDuration = Duration(
+        seconds: (waitSecondsRaw != null && waitSecondsRaw >= 0)
+            ? waitSecondsRaw
+            : 300,
+      );
+      _setStateSafe(() {
+        _requiredDistanceMeters = rad ?? 120;
+        _minVisitDuration = waitDuration;
+      });
     } catch (_) {
-      _setStateSafe(() => _requiredDistanceMeters = 120);
+      _setStateSafe(() {
+        _requiredDistanceMeters = 120;
+        _minVisitDuration = const Duration(minutes: 5);
+      });
     }
   }
 
@@ -141,6 +169,15 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     final m = (total ~/ 60).toString().padLeft(2, '0');
     final s = (total % 60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  String _formatWaitDuration(Duration duration) {
+    final totalSeconds = duration.inSeconds;
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    if (minutes > 0 && seconds > 0) return '${minutes}m ${seconds}s';
+    if (minutes > 0) return '${minutes}m';
+    return '${seconds}s';
   }
 
   String _twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -355,7 +392,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     if (_elapsed() < _minVisitDuration) {
       Get.snackbar(
         'Wait required',
-        'You can submit after ${_minVisitDuration.inMinutes} minutes.',
+        'You can submit after ${_formatWaitDuration(_minVisitDuration)}.',
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
@@ -534,7 +571,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Minimum wait: ${_minVisitDuration.inMinutes} minutes',
+                            'Minimum wait: ${_formatWaitDuration(_minVisitDuration)}',
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),

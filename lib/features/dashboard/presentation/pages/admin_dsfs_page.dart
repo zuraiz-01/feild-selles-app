@@ -81,6 +81,10 @@ class AdminDsfsPage extends StatelessWidget {
                     (geofence is Map && geofence['radiusMeters'] is num)
                     ? (geofence['radiusMeters'] as num).toDouble()
                     : null;
+                final waitSeconds = _readInt(data, 'shopVisitWaitSeconds');
+                final waitLabel = waitSeconds == null
+                    ? null
+                    : '${(waitSeconds ~/ 60).toString().padLeft(2, '0')}:${(waitSeconds % 60).toString().padLeft(2, '0')}';
                 return GlassCard(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
@@ -115,6 +119,7 @@ class AdminDsfsPage extends StatelessWidget {
                                 if (email.isNotEmpty) email,
                                 if (radius != null)
                                   'Geofence ${radius.toStringAsFixed(0)} m',
+                                if (waitLabel != null) 'Wait $waitLabel',
                               ].join(' · '),
                               style: const TextStyle(color: AppTheme.mutedInk),
                             ),
@@ -167,6 +172,14 @@ class AdminDsfsPage extends StatelessWidget {
     );
     final radiusController = TextEditingController(
       text: _readNum(existing, 'geofence.radiusMeters'),
+    );
+    final existingWaitSeconds =
+        _readInt(existing, 'shopVisitWaitSeconds') ?? 300;
+    final waitMinutesController = TextEditingController(
+      text: (existingWaitSeconds ~/ 60).toString(),
+    );
+    final waitSecondsController = TextEditingController(
+      text: (existingWaitSeconds % 60).toString().padLeft(2, '0'),
     );
 
     await showDialog<void>(
@@ -273,6 +286,36 @@ class AdminDsfsPage extends StatelessWidget {
                     );
                   },
                 ),
+                const SizedBox(height: 12),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Shop arrival wait time',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: waitMinutesController,
+                        decoration: const InputDecoration(labelText: 'Minutes'),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: waitSecondsController,
+                        decoration: const InputDecoration(
+                          labelText: 'Seconds (0-59)',
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -286,6 +329,18 @@ class AdminDsfsPage extends StatelessWidget {
                 final id = idController.text.trim();
                 final name = nameController.text.trim();
                 if (id.isEmpty || name.isEmpty) return;
+                final shopVisitWaitSeconds = _parseWaitSeconds(
+                  minutes: waitMinutesController.text.trim(),
+                  seconds: waitSecondsController.text.trim(),
+                );
+                if (shopVisitWaitSeconds == null) {
+                  Get.snackbar(
+                    'Invalid wait time',
+                    'Use minutes >= 0 and seconds 0..59.',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                  return;
+                }
                 final geo = _parseGeofence(
                   lat: centerLatController.text.trim(),
                   lng: centerLngController.text.trim(),
@@ -298,6 +353,7 @@ class AdminDsfsPage extends StatelessWidget {
                     'email': emailController.text.trim(),
                   if (distributorController.text.trim().isNotEmpty)
                     'distributorId': distributorController.text.trim(),
+                  'shopVisitWaitSeconds': shopVisitWaitSeconds,
                   if (geo != null) 'geofence': geo,
                   'updatedAt': FieldValue.serverTimestamp(),
                 };
@@ -347,5 +403,29 @@ class AdminDsfsPage extends StatelessWidget {
     }
     if (cur is num) return cur.toString();
     return '';
+  }
+
+  int? _readInt(Map<String, dynamic>? data, String path) {
+    if (data == null) return null;
+    dynamic cur = data;
+    for (final part in path.split('.')) {
+      if (cur is Map && cur.containsKey(part)) {
+        cur = cur[part];
+      } else {
+        return null;
+      }
+    }
+    if (cur is int) return cur;
+    if (cur is num) return cur.toInt();
+    if (cur is String) return int.tryParse(cur.trim());
+    return null;
+  }
+
+  int? _parseWaitSeconds({required String minutes, required String seconds}) {
+    final minVal = int.tryParse(minutes);
+    final secVal = int.tryParse(seconds);
+    if (minVal == null || secVal == null) return null;
+    if (minVal < 0 || secVal < 0 || secVal > 59) return null;
+    return (minVal * 60) + secVal;
   }
 }

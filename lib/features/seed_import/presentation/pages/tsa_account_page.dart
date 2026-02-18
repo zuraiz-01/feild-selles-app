@@ -12,6 +12,7 @@ import '../../data/dsf_account_service.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../core/utils/map_location_url_parser.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class TsaAccountPage extends StatefulWidget {
@@ -113,6 +114,8 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
       });
       return;
     }
+    if (_tryMoveToSharedLocation(trimmed)) return;
+
     setState(() {
       _isSearching = true;
       _searchError = null;
@@ -205,6 +208,18 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
     _mapController.move(_center, 15);
   }
 
+  bool _tryMoveToSharedLocation(String raw) {
+    final parsed = MapLocationUrlParser.tryParse(raw);
+    if (parsed == null) return false;
+    setState(() {
+      _center = LatLng(parsed.lat, parsed.lng);
+      _searchResults = [];
+      _searchError = null;
+    });
+    _mapController.move(_center, 15);
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final height = MediaQuery.of(context).size.height * 0.75;
@@ -239,7 +254,7 @@ class _OfficeMapPickerSheetState extends State<_OfficeMapPickerSheet> {
               textInputAction: TextInputAction.search,
               onSubmitted: _searchPlace,
               decoration: InputDecoration(
-                hintText: 'Search location',
+                hintText: 'Search location or paste map URL',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _isSearching
                     ? const Padding(
@@ -455,6 +470,8 @@ class _PlaceResult {
 }
 
 class _TsaAccountPageState extends State<TsaAccountPage> {
+  static const int _defaultShopWaitSeconds = 300;
+
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -462,6 +479,8 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   final _officeLat = TextEditingController();
   final _officeLng = TextEditingController();
   final _officeRadius = TextEditingController();
+  final _shopWaitMinutes = TextEditingController();
+  final _shopWaitSeconds = TextEditingController();
 
   bool _isWorking = false;
   bool _isEditMode = false;
@@ -490,7 +509,23 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     _officeLat.dispose();
     _officeLng.dispose();
     _officeRadius.dispose();
+    _shopWaitMinutes.dispose();
+    _shopWaitSeconds.dispose();
     super.dispose();
+  }
+
+  void _setWaitControllersFromTotalSeconds(int totalSeconds) {
+    final safe = totalSeconds < 0 ? 0 : totalSeconds;
+    _shopWaitMinutes.text = (safe ~/ 60).toString();
+    _shopWaitSeconds.text = (safe % 60).toString().padLeft(2, '0');
+  }
+
+  int? _readWaitSecondsFromInputs() {
+    final min = int.tryParse(_shopWaitMinutes.text.trim());
+    final sec = int.tryParse(_shopWaitSeconds.text.trim());
+    if (min == null || sec == null) return null;
+    if (min < 0 || sec < 0 || sec > 59) return null;
+    return (min * 60) + sec;
   }
 
   Future<void> _loadOfficeGeofence(String distributorId) async {
@@ -615,7 +650,8 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
           _lastAccount!.email != account.email ||
           _lastAccount!.password != account.password ||
           _lastAccount!.name != account.name ||
-          _lastAccount!.distributorId != account.distributorId;
+          _lastAccount!.distributorId != account.distributorId ||
+          _lastAccount!.shopVisitWaitSeconds != account.shopVisitWaitSeconds;
       if (hasChanged) {
         _name.text = account.name.isEmpty ? tsaName : account.name;
         _email.text = account.email;
@@ -623,6 +659,9 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         _distributorId.text = account.distributorId.isEmpty
             ? tsaId
             : account.distributorId;
+        _setWaitControllersFromTotalSeconds(
+          account.shopVisitWaitSeconds ?? _defaultShopWaitSeconds,
+        );
       }
       _lastAccount = account;
       return;
@@ -633,6 +672,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       _email.text = _service.emailForTsa(tsaId);
       _password.text = '';
       _distributorId.text = tsaId;
+      _setWaitControllersFromTotalSeconds(_defaultShopWaitSeconds);
     }
   }
 
@@ -643,6 +683,14 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     if (officeLat == null || officeLng == null || officeRadius == null) {
       setState(() {
         _status = 'Office geofence (lat/lng/radius) is required.';
+      });
+      return;
+    }
+    final shopWaitSeconds = _readWaitSecondsFromInputs();
+    if (shopWaitSeconds == null) {
+      setState(() {
+        _status =
+            'Shop wait time is invalid. Use minutes >= 0 and seconds 0..59.';
       });
       return;
     }
@@ -660,6 +708,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         officeLat: officeLat,
         officeLng: officeLng,
         officeRadiusMeters: officeRadius,
+        shopVisitWaitSeconds: shopWaitSeconds,
       );
       _status = 'Created DSF: ${account.email}';
       _isEditMode = false;
@@ -681,6 +730,14 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       final officeLat = double.tryParse(_officeLat.text.trim());
       final officeLng = double.tryParse(_officeLng.text.trim());
       final officeRadius = double.tryParse(_officeRadius.text.trim());
+      final shopWaitSeconds = _readWaitSecondsFromInputs();
+      if (shopWaitSeconds == null) {
+        setState(() {
+          _status =
+              'Shop wait time is invalid. Use minutes >= 0 and seconds 0..59.';
+        });
+        return;
+      }
       final account = await _service.updateAccount(
         tsaId: tsaId,
         name: _name.text,
@@ -690,6 +747,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         officeLat: officeLat,
         officeLng: officeLng,
         officeRadiusMeters: officeRadius,
+        shopVisitWaitSeconds: shopWaitSeconds,
       );
       _status = 'Updated DSF: ${account.email}';
       _isEditMode = false;
@@ -934,6 +992,45 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                           labelText: 'Office radius (meters)',
                           prefixIcon: Icon(Icons.circle_outlined),
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Shop arrival wait time',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.ink,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _shopWaitMinutes,
+                              readOnly: !isEditable,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Minutes',
+                                prefixIcon: Icon(Icons.timer_outlined),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _shopWaitSeconds,
+                              readOnly: !isEditable,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Seconds (0-59)',
+                                prefixIcon: Icon(Icons.timelapse_outlined),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       if (_recentLoaded && _recentLocations.isNotEmpty) ...[
