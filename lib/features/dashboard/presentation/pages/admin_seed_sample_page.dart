@@ -4,6 +4,8 @@ import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../products/data/models/product_model.dart';
 
 class AdminSeedSamplePage extends StatefulWidget {
@@ -27,6 +29,7 @@ class _AdminSeedSamplePageState extends State<AdminSeedSamplePage> {
           tooltip: 'Back to dashboard',
         ),
         title: const Text('Seed Sample Data'),
+        actions: const [ThemeModeToggleButton()],
       ),
       body: AppShell(
         child: Column(
@@ -161,21 +164,13 @@ class _AdminSeedSamplePageState extends State<AdminSeedSamplePage> {
         _status =
             'Done. DSF: dsf_demo (uid: dsf_demo_uid), Shops: ALPHA/BETA, Products created.';
       });
-      Get.snackbar(
-        'Seeded',
-        'Sample data created.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.success('Seeded', message: 'Sample data created.');
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _status = 'Failed: $e';
       });
-      Get.snackbar(
-        'Seed failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.error('Seed failed', message: e.toString());
     } finally {
       if (mounted) {
         setState(() {

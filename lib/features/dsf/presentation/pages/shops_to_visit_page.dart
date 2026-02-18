@@ -9,7 +9,9 @@ import 'dart:convert';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/services/session/session_service.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 
@@ -88,10 +90,9 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
     final session = Get.find<SessionService>();
     final dutyId = session.activeDutyId;
     if (dutyId == null || dutyId.trim().isEmpty) {
-      Get.snackbar(
+      AppToast.warning(
         'Duty required',
-        'Start duty first to open shop visit form.',
-        snackPosition: SnackPosition.BOTTOM,
+        message: 'Start duty first to open shop visit form.',
       );
       return;
     }
@@ -318,10 +319,9 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
     }
 
     if (!context.mounted) return;
-    Get.snackbar(
+    AppToast.success(
       'Shop added',
-      '${result.code} assigned for ${_labelForDayKey(dayKey)}',
-      snackPosition: SnackPosition.BOTTOM,
+      message: '${result.code} assigned for ${_labelForDayKey(dayKey)}',
     );
   }
 
@@ -551,6 +551,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
               : 'Shops for $dayLabel (preview)',
         ),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             onPressed: _dsfAccountId != null
                 ? () => _addShopForDay(

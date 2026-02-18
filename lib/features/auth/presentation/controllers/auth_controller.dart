@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../../app/routes/app_routes.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../core/models/user_role.dart';
 import '../../../../core/services/session/session_service.dart';
 import '../../domain/usecases/login_usecase.dart';
@@ -31,21 +32,13 @@ class AuthController extends GetxController {
       message = 'Invalid email address.';
     }
     if (message == null) return false;
-    Get.snackbar(
-      'Login failed',
-      message,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    AppToast.error('Login failed', message: message);
     return true;
   }
 
   void _showGenericPopup(String message) {
     if (message.trim().isEmpty) return;
-    Get.snackbar(
-      'Login failed',
-      message,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    AppToast.error('Login failed', message: message);
   }
 
   String _cleanError(String message) {
@@ -102,6 +95,7 @@ class AuthController extends GetxController {
           distributorId: profile.distributorId,
         ),
       );
+      AppToast.success('Login successful');
 
       switch (profile.role) {
         case UserRole.admin:
@@ -138,13 +132,13 @@ class AuthController extends GetxController {
       await _logoutUseCase();
       email.value = '';
       password.value = '';
+      AppToast.info('Logged out');
       Get.offAllNamed(AppRoutes.login);
     } catch (e) {
       error.value = e.toString();
-      Get.snackbar(
+      AppToast.error(
         'Logout blocked',
-        _cleanError(error.value ?? 'Logout failed.'),
-        snackPosition: SnackPosition.BOTTOM,
+        message: _cleanError(error.value ?? 'Logout failed.'),
       );
     } finally {
       isLoading.value = false;

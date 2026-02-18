@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:get/get.dart';
+import 'package:toastification/toastification.dart';
 
 import 'app/bindings/initial_binding.dart';
+import 'app/controllers/theme_controller.dart';
 import 'app/routes/app_pages.dart';
 import 'app/routes/app_routes.dart';
 import 'app/ui/app_theme.dart';
@@ -20,6 +22,8 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
   }
+  final themeController = Get.put(ThemeController(), permanent: true);
+  await themeController.load();
   runApp(const MyApp());
 }
 
@@ -31,34 +35,42 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    if (skipFirebase) {
-      return GetMaterialApp(
-        title: 'Field Sales App (Preview)',
-        theme: AppTheme.buildLightTheme(),
-        darkTheme: AppTheme.buildDarkTheme(),
-        themeMode: ThemeMode.system,
-        initialBinding: InitialBinding(),
-        debugShowCheckedModeBanner: false,
-        home: const Scaffold(
-          body: Center(
-            child: Text(
-              'Preview mode is enabled.\nRun without SKIP_FIREBASE to use full app.',
-              textAlign: TextAlign.center,
+    return GetBuilder<ThemeController>(
+      builder: (themeController) {
+        if (skipFirebase) {
+          return ToastificationWrapper(
+            child: GetMaterialApp(
+              title: 'Field Sales App (Preview)',
+              theme: AppTheme.buildLightTheme(),
+              darkTheme: AppTheme.buildDarkTheme(),
+              themeMode: themeController.themeMode,
+              initialBinding: InitialBinding(),
+              debugShowCheckedModeBanner: false,
+              home: const Scaffold(
+                body: Center(
+                  child: Text(
+                    'Preview mode is enabled.\nRun without SKIP_FIREBASE to use full app.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
             ),
-          ),
-        ),
-      );
-    }
+          );
+        }
 
-    return GetMaterialApp(
-      title: 'Field Sales App',
-      theme: AppTheme.buildLightTheme(),
-      darkTheme: AppTheme.buildDarkTheme(),
-      themeMode: ThemeMode.system,
-      initialBinding: InitialBinding(),
-      initialRoute: AppRoutes.splash,
-      getPages: AppPages.pages,
-      debugShowCheckedModeBanner: false,
+        return ToastificationWrapper(
+          child: GetMaterialApp(
+            title: 'Field Sales App',
+            theme: AppTheme.buildLightTheme(),
+            darkTheme: AppTheme.buildDarkTheme(),
+            themeMode: themeController.themeMode,
+            initialBinding: InitialBinding(),
+            initialRoute: AppRoutes.splash,
+            getPages: AppPages.pages,
+            debugShowCheckedModeBanner: false,
+          ),
+        );
+      },
     );
   }
 }

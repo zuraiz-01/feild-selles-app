@@ -4,7 +4,9 @@ import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 
 class AdminDsfsPage extends StatelessWidget {
   const AdminDsfsPage({super.key});
@@ -49,6 +51,7 @@ class AdminDsfsPage extends StatelessWidget {
             ),
           ],
         ),
+        actions: const [ThemeModeToggleButton(), SizedBox(width: 8)],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context, dsfCol: dsfCol),
@@ -351,10 +354,9 @@ class AdminDsfsPage extends StatelessWidget {
                   seconds: waitSecondsController.text.trim(),
                 );
                 if (shopVisitWaitSeconds == null) {
-                  Get.snackbar(
+                  AppToast.warning(
                     'Invalid wait time',
-                    'Use minutes >= 0 and seconds 0..59.',
-                    snackPosition: SnackPosition.BOTTOM,
+                    message: 'Use minutes >= 0 and seconds 0..59.',
                   );
                   return;
                 }
@@ -379,11 +381,7 @@ class AdminDsfsPage extends StatelessWidget {
                 }
                 await dsfCol.doc(id).set(payload, SetOptions(merge: true));
                 if (context.mounted) Navigator.of(context).pop();
-                Get.snackbar(
-                  'Saved',
-                  'DSF $id saved',
-                  snackPosition: SnackPosition.BOTTOM,
-                );
+                AppToast.success('Saved', message: 'DSF $id saved');
               },
               child: const Text('Save'),
             ),

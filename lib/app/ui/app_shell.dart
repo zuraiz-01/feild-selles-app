@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
@@ -5,21 +6,35 @@ import 'app_theme.dart';
 class AppShell extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
+  final bool constrainOnWeb;
+  final double webMaxWidth;
 
   const AppShell({
     super.key,
     required this.child,
     this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+    this.constrainOnWeb = true,
+    this.webMaxWidth = 1360,
   });
 
   @override
   Widget build(BuildContext context) {
+    Widget content = child;
+    if (kIsWeb && constrainOnWeb) {
+      content = Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: webMaxWidth),
+          child: content,
+        ),
+      );
+    }
+
     return Container(
       decoration: BoxDecoration(
         gradient: AppTheme.backgroundFor(Theme.of(context).brightness),
       ),
       child: SafeArea(
-        child: Padding(padding: padding, child: child),
+        child: Padding(padding: padding, child: content),
       ),
     );
   }

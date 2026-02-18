@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../products/data/models/product_model.dart';
 
 class AdminProductsPage extends StatelessWidget {
@@ -54,6 +57,7 @@ class AdminProductsPage extends StatelessWidget {
           ],
         ),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             tooltip: 'Add Excel default products',
             icon: const Icon(Icons.playlist_add),
@@ -83,7 +87,7 @@ class AdminProductsPage extends StatelessWidget {
                 child: Text('No products yet. Add your first.'),
               );
             }
-            return ListView.separated(
+            final list = ListView.separated(
               itemCount: docs.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
@@ -181,10 +185,9 @@ class AdminProductsPage extends StatelessWidget {
                               if (ok != true) return;
                               await productsCol.doc(doc.id).delete();
                               if (!context.mounted) return;
-                              Get.snackbar(
+                              AppToast.success(
                                 'Deleted',
-                                'Product ${product.name} deleted',
-                                snackPosition: SnackPosition.BOTTOM,
+                                message: 'Product ${product.name} deleted',
                               );
                             },
                           ),
@@ -203,6 +206,64 @@ class AdminProductsPage extends StatelessWidget {
                   ),
                 );
               },
+            );
+
+            if (!kIsWeb) return list;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 40,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.inventory_2_outlined,
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Products Workspace',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${docs.length} products configured',
+                              style: const TextStyle(
+                                color: AppTheme.mutedInk,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () =>
+                            _openForm(context, productsCol: productsCol),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Product'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(child: list),
+              ],
             );
           },
         ),
@@ -248,11 +309,7 @@ class AdminProductsPage extends StatelessWidget {
     }
     await batch.commit();
     if (!context.mounted) return;
-    Get.snackbar(
-      'Done',
-      'Default products added.',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    AppToast.success('Done', message: 'Default products added.');
   }
 
   Future<void> _openForm(
@@ -343,11 +400,7 @@ class AdminProductsPage extends StatelessWidget {
                     .doc(existingId ?? sku)
                     .set(product.toMap(), SetOptions(merge: true));
                 if (context.mounted) Navigator.of(context).pop();
-                Get.snackbar(
-                  'Saved',
-                  'Product $name saved',
-                  snackPosition: SnackPosition.BOTTOM,
-                );
+                AppToast.success('Saved', message: 'Product $name saved');
               },
               child: const Text('Save'),
             ),

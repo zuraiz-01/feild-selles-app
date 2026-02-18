@@ -9,7 +9,9 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/services/session/session_service.dart';
 
 class DsfShopVisitPage extends StatefulWidget {
@@ -362,43 +364,33 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     required double discountPct,
   }) async {
     if (_orders.isEmpty) {
-      Get.snackbar(
-        'Missing data',
-        'Add at least one order.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.warning('Missing data', message: 'Add at least one order.');
       return;
     }
     if (!_hasStock || _stockItems.isEmpty) {
-      Get.snackbar(
-        'Missing data',
-        'Add current stock.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.warning('Missing data', message: 'Add current stock.');
       return;
     }
     final amount = double.tryParse(_paymentController.text.trim());
     if (amount == null) {
-      Get.snackbar(
+      AppToast.warning(
         'Missing data',
-        'Add recovery amount (number).',
-        snackPosition: SnackPosition.BOTTOM,
+        message: 'Add recovery amount (number).',
       );
       return;
     }
     if (_elapsed() < _minVisitDuration) {
-      Get.snackbar(
+      AppToast.warning(
         'Wait required',
-        'You can submit after ${_formatWaitDuration(_minVisitDuration)}.',
-        snackPosition: SnackPosition.BOTTOM,
+        message:
+            'You can submit after ${_formatWaitDuration(_minVisitDuration)}.',
       );
       return;
     }
     if (!_isInside(distanceMeters)) {
-      Get.snackbar(
+      AppToast.warning(
         'Not at shop',
-        'Move closer to the shop to submit.',
-        snackPosition: SnackPosition.BOTTOM,
+        message: 'Move closer to the shop to submit.',
       );
       return;
     }
@@ -459,18 +451,10 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       } catch (_) {
         // ignore alert logging failures
       }
-      Get.snackbar(
-        'Saved',
-        'Visit submitted.',
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.success('Saved', message: 'Visit submitted.');
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      Get.snackbar(
-        'Save failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.error('Save failed', message: e.toString());
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -509,7 +493,10 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         .doc(shopId);
 
     return Scaffold(
-      appBar: AppBar(title: Text(shopTitle)),
+      appBar: AppBar(
+        title: Text(shopTitle),
+        actions: const [ThemeModeToggleButton()],
+      ),
       body: AppShell(
         child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
           stream: shopRef.snapshots(),

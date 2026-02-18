@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 
 class DsfAddOrderPage extends StatefulWidget {
   const DsfAddOrderPage({super.key});
@@ -61,6 +63,7 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
       appBar: AppBar(
         title: const Text('Add Order'),
         actions: [
+          const ThemeModeToggleButton(),
           TextButton(
             onPressed: () => Get.back(result: _orders),
             child: const Text('Done'),
@@ -148,10 +151,9 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
                             if (qtyRaw.isEmpty) return;
                             final parsed = double.tryParse(qtyRaw);
                             if (parsed == null) {
-                              Get.snackbar(
+                              AppToast.warning(
                                 'Error adding product',
-                                'Please enter a valid quantity.',
-                                snackPosition: SnackPosition.BOTTOM,
+                                message: 'Please enter a valid quantity.',
                               );
                               return;
                             }
@@ -167,10 +169,10 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
                                 if (price != null) 'lineAmount': parsed * price,
                               });
                             });
-                            Get.snackbar(
+                            AppToast.success(
                               'Added',
-                              '$name ${parsed.toStringAsFixed(2)} ${_selectedProductUnit.isNotEmpty ? _selectedProductUnit : 'L'}',
-                              snackPosition: SnackPosition.BOTTOM,
+                              message:
+                                  '$name ${parsed.toStringAsFixed(2)} ${_selectedProductUnit.isNotEmpty ? _selectedProductUnit : 'L'}',
                             );
                           },
                         ),
@@ -217,19 +219,17 @@ class _DsfAddOrderPageState extends State<DsfAddOrderPage> {
               onPressed: () {
                 final qty = _qtyController.text.trim();
                 if (qty.isEmpty) {
-                  Get.snackbar(
+                  AppToast.warning(
                     'Error adding product',
-                    'Please enter quantity.',
-                    snackPosition: SnackPosition.BOTTOM,
+                    message: 'Please enter quantity.',
                   );
                   return;
                 }
                 final parsed = double.tryParse(qty);
                 if (parsed == null) {
-                  Get.snackbar(
+                  AppToast.warning(
                     'Error adding product',
-                    'Please enter a valid quantity.',
-                    snackPosition: SnackPosition.BOTTOM,
+                    message: 'Please enter a valid quantity.',
                   );
                   return;
                 }

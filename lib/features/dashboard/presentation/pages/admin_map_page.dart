@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:get/get.dart';
@@ -6,7 +7,9 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 
 class AdminMapPage extends StatefulWidget {
   const AdminMapPage({super.key});
@@ -105,6 +108,7 @@ class _AdminMapPageState extends State<AdminMapPage> {
             ),
           ],
         ),
+        actions: const [ThemeModeToggleButton(), SizedBox(width: 8)],
       ),
       body: AppShell(
         child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -555,6 +559,11 @@ class _SelectedUserView extends StatelessWidget {
   final LatLng? Function(dynamic raw) pointFromMap;
   final DateTime? Function(dynamic raw) dateFromRaw;
 
+  static final Map<String, String> _lastVisitToastByDsf = <String, String>{};
+  static final Map<String, String> _lastPointToastByDsf = <String, String>{};
+  static final Map<String, DateTime> _lastPointToastAtByDsf =
+      <String, DateTime>{};
+
   const _SelectedUserView({
     required this.dsfId,
     required this.displayName,
@@ -613,6 +622,109 @@ class _SelectedUserView extends StatelessWidget {
         });
   }
 
+  void _emitRealtimeToasts({
+    required String displayName,
+    required DateTime? visitSubmittedAt,
+    required String visitTitle,
+    required DateTime? pointAt,
+    required LatLng? point,
+  }) {
+    if (visitSubmittedAt != null) {
+      final visitKey = visitSubmittedAt.toUtc().toIso8601String();
+      final oldVisitKey = _lastVisitToastByDsf[dsfId];
+      if (oldVisitKey == null) {
+        _lastVisitToastByDsf[dsfId] = visitKey;
+      } else if (oldVisitKey != visitKey) {
+        _lastVisitToastByDsf[dsfId] = visitKey;
+        AppToast.success(
+          'Shop visit updated',
+          message: '$displayName: $visitTitle',
+        );
+      }
+    }
+
+    if (point != null && pointAt != null) {
+      final pointKey = pointAt.toUtc().toIso8601String();
+      final oldPointKey = _lastPointToastByDsf[dsfId];
+      if (oldPointKey == null) {
+        _lastPointToastByDsf[dsfId] = pointKey;
+        return;
+      }
+      if (oldPointKey == pointKey) return;
+
+      final now = DateTime.now();
+      final lastToastAt = _lastPointToastAtByDsf[dsfId];
+      if (lastToastAt == null || now.difference(lastToastAt).inSeconds >= 45) {
+        _lastPointToastByDsf[dsfId] = pointKey;
+        _lastPointToastAtByDsf[dsfId] = now;
+        AppToast.info(
+          'Live location updated',
+          message:
+              '$displayName: ${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
+        );
+      } else {
+        _lastPointToastByDsf[dsfId] = pointKey;
+      }
+    }
+  }
+
+  Widget _buildResponsivePanel({
+    required BuildContext context,
+    required Widget summaryCard,
+    required Widget mapCard,
+    required Widget activityCard,
+    required Widget coverageCard,
+    required Widget actionsCard,
+    Widget? logoutCard,
+  }) {
+    final isWide = kIsWeb && MediaQuery.of(context).size.width >= 1120;
+    if (!isWide) {
+      return ListView(
+        children: [
+          summaryCard,
+          const SizedBox(height: 12),
+          mapCard,
+          const SizedBox(height: 12),
+          activityCard,
+          const SizedBox(height: 12),
+          coverageCard,
+          const SizedBox(height: 12),
+          actionsCard,
+          if (logoutCard != null) ...[const SizedBox(height: 12), logoutCard],
+        ],
+      );
+    }
+
+    return ListView(
+      children: [
+        summaryCard,
+        const SizedBox(height: 12),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 2, child: mapCard),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                children: [
+                  activityCard,
+                  const SizedBox(height: 12),
+                  coverageCard,
+                  const SizedBox(height: 12),
+                  actionsCard,
+                  if (logoutCard != null) ...[
+                    const SizedBox(height: 12),
+                    logoutCard,
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dutyStream = FirebaseFirestore.instance
@@ -654,51 +766,62 @@ class _SelectedUserView extends StatelessWidget {
             active?.updatedAt ?? active?.lastPointAt ?? recent?.createdAt;
 
         if (dutyId == null) {
-          return ListView(
-            children: [
-              _UserSummaryCard(
-                name: resolvedName,
-                status: dutyStatus,
-                updatedAt: lastUpdated,
-                updatedLabel: _formatDateWithSince(lastUpdated),
-              ),
-              const SizedBox(height: 12),
-              _MapCard(
-                title: resolvedName,
-                status: dutyStatus,
-                subtitle: 'No duty session found.',
-                point:
-                    active?.lastPoint ??
-                    recent?.point ??
-                    endLoc ??
-                    startLoc ??
-                    const LatLng(24.8607, 67.0011),
-                pointLabel: active?.lastPoint != null
-                    ? 'Live location'
-                    : (recent?.point != null
-                          ? 'Recent alert location'
-                          : 'Last known location'),
-              ),
-              const SizedBox(height: 12),
-              _ActivityCard(
-                lastVisitTitle: 'No shop visits yet.',
-                lastVisitTime: 'N/A',
-                lastAlertTitle: recent?.title ?? 'No recent alerts.',
-                lastAlertTime: _formatDateWithSince(recent?.createdAt),
-              ),
-              const SizedBox(height: 12),
-              _AlertsAdminActionsCard(dsfId: dsfId, dsfName: resolvedName),
-              if (recent?.type == 'dsf_logout') ...[
-                const SizedBox(height: 12),
-                _LogoutPendingShopsCard(
+          final summaryCard = _UserSummaryCard(
+            name: resolvedName,
+            status: dutyStatus,
+            updatedAt: lastUpdated,
+            updatedLabel: _formatDateWithSince(lastUpdated),
+          );
+          final mapCard = _MapCard(
+            title: resolvedName,
+            status: dutyStatus,
+            subtitle: 'No duty session found.',
+            point:
+                active?.lastPoint ??
+                recent?.point ??
+                endLoc ??
+                startLoc ??
+                const LatLng(24.8607, 67.0011),
+            pointLabel: active?.lastPoint != null
+                ? 'Live location'
+                : (recent?.point != null
+                      ? 'Recent alert location'
+                      : 'Last known location'),
+          );
+          final activityCard = _ActivityCard(
+            lastVisitTitle: 'No shop visits yet.',
+            lastVisitTime: 'N/A',
+            lastAlertTitle: recent?.title ?? 'No recent alerts.',
+            lastAlertTime: _formatDateWithSince(recent?.createdAt),
+          );
+          final actionsCard = _AlertsAdminActionsCard(
+            dsfId: dsfId,
+            dsfName: resolvedName,
+          );
+          final coverageCard = _VisitCoverageCard(
+            dsfId: dsfId,
+            dutyId: dutyId,
+            duty: duty,
+            dateFromRaw: dateFromRaw,
+          );
+          final logoutCard = recent?.type == 'dsf_logout'
+              ? _LogoutPendingShopsCard(
                   dsfId: dsfId,
                   dutyId: dutyId,
                   duty: duty,
                   recent: recent,
                   dateFromRaw: dateFromRaw,
-                ),
-              ],
-            ],
+                )
+              : null;
+
+          return _buildResponsivePanel(
+            context: context,
+            summaryCard: summaryCard,
+            mapCard: mapCard,
+            activityCard: activityCard,
+            coverageCard: coverageCard,
+            actionsCard: actionsCard,
+            logoutCard: logoutCard,
           );
         }
 
@@ -720,9 +843,11 @@ class _SelectedUserView extends StatelessWidget {
             }
 
             final visitPoint = pointFromMap(visit?['submittedLocation']);
+            final hasLivePoint = active?.lastPoint != null;
+            final hasVisitPoint = visitPoint != null;
             final mapPoint =
-                visitPoint ??
                 active?.lastPoint ??
+                visitPoint ??
                 recent?.point ??
                 endLoc ??
                 startLoc ??
@@ -736,57 +861,72 @@ class _SelectedUserView extends StatelessWidget {
             final visitTime = _formatDateWithSince(visitSubmittedAt);
             final alertTitle = recent?.title ?? 'No recent alerts.';
             final alertTime = _formatDateWithSince(recent?.createdAt);
+            _emitRealtimeToasts(
+              displayName: resolvedName,
+              visitSubmittedAt: visitSubmittedAt,
+              visitTitle: visitTitle,
+              pointAt: active?.lastPointAt ?? active?.updatedAt,
+              point: active?.lastPoint,
+            );
 
             return StreamBuilder<List<LatLng>>(
               stream: trackingPointsStream,
               builder: (context, trackingSnap) {
                 final trailPoints = trackingSnap.data ?? const <LatLng>[];
-                return ListView(
-                  children: [
-                    _UserSummaryCard(
-                      name: resolvedName,
-                      status: dutyStatus,
-                      updatedAt: lastUpdated,
-                      updatedLabel: _formatDateWithSince(lastUpdated),
-                    ),
-                    const SizedBox(height: 12),
-                    _MapCard(
-                      title: resolvedName,
-                      status: dutyStatus,
-                      subtitle: 'Duty $dutyId',
-                      point: mapPoint,
-                      pointLabel: visitPoint != null
-                          ? 'Last shop location'
-                          : (active?.lastPoint != null
-                                ? 'Live location'
-                                : (recent?.point != null
-                                      ? 'Recent alert location'
-                                      : 'Last known location')),
-                      trailPoints: trailPoints,
-                    ),
-                    const SizedBox(height: 12),
-                    _ActivityCard(
-                      lastVisitTitle: visitTitle,
-                      lastVisitTime: visitTime,
-                      lastAlertTitle: alertTitle,
-                      lastAlertTime: alertTime,
-                    ),
-                    const SizedBox(height: 12),
-                    _AlertsAdminActionsCard(
-                      dsfId: dsfId,
-                      dsfName: resolvedName,
-                    ),
-                    if (recent?.type == 'dsf_logout') ...[
-                      const SizedBox(height: 12),
-                      _LogoutPendingShopsCard(
+                final summaryCard = _UserSummaryCard(
+                  name: resolvedName,
+                  status: dutyStatus,
+                  updatedAt: lastUpdated,
+                  updatedLabel: _formatDateWithSince(lastUpdated),
+                );
+                final mapCard = _MapCard(
+                  title: resolvedName,
+                  status: dutyStatus,
+                  subtitle: 'Duty $dutyId',
+                  point: mapPoint,
+                  pointLabel: hasLivePoint
+                      ? 'Live location'
+                      : (hasVisitPoint
+                            ? 'Last shop location'
+                            : (recent?.point != null
+                                  ? 'Recent alert location'
+                                  : 'Last known location')),
+                  trailPoints: trailPoints,
+                );
+                final activityCard = _ActivityCard(
+                  lastVisitTitle: visitTitle,
+                  lastVisitTime: visitTime,
+                  lastAlertTitle: alertTitle,
+                  lastAlertTime: alertTime,
+                );
+                final actionsCard = _AlertsAdminActionsCard(
+                  dsfId: dsfId,
+                  dsfName: resolvedName,
+                );
+                final coverageCard = _VisitCoverageCard(
+                  dsfId: dsfId,
+                  dutyId: dutyId,
+                  duty: duty,
+                  dateFromRaw: dateFromRaw,
+                );
+                final logoutCard = recent?.type == 'dsf_logout'
+                    ? _LogoutPendingShopsCard(
                         dsfId: dsfId,
                         dutyId: dutyId,
                         duty: duty,
                         recent: recent,
                         dateFromRaw: dateFromRaw,
-                      ),
-                    ],
-                  ],
+                      )
+                    : null;
+
+                return _buildResponsivePanel(
+                  context: context,
+                  summaryCard: summaryCard,
+                  mapCard: mapCard,
+                  activityCard: activityCard,
+                  coverageCard: coverageCard,
+                  actionsCard: actionsCard,
+                  logoutCard: logoutCard,
                 );
               },
             );
@@ -864,20 +1004,15 @@ class _AlertsAdminActionsCardState extends State<_AlertsAdminActionsCard> {
     try {
       final count = await _deleteAllUserAlerts();
       if (!mounted) return;
-      Get.snackbar(
+      AppToast.success(
         count == 0 ? 'No alerts found' : 'Alerts deleted',
-        count == 0
+        message: count == 0
             ? 'No alerts found for ${widget.dsfName}.'
             : 'Deleted $count alert(s) for ${widget.dsfName}.',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } catch (e) {
       if (!mounted) return;
-      Get.snackbar(
-        'Delete failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.error('Delete failed', message: e.toString());
     } finally {
       if (mounted) setState(() => _isDeleting = false);
     }
@@ -1231,6 +1366,259 @@ class _LogoutPendingShopsCard extends StatelessWidget {
   }
 }
 
+class _VisitCoverageCard extends StatelessWidget {
+  final String dsfId;
+  final String? dutyId;
+  final Map<String, dynamic>? duty;
+  final DateTime? Function(dynamic raw) dateFromRaw;
+
+  const _VisitCoverageCard({
+    required this.dsfId,
+    required this.dutyId,
+    required this.duty,
+    required this.dateFromRaw,
+  });
+
+  String _dayKeyFromDate(DateTime date) {
+    switch (date.weekday) {
+      case DateTime.monday:
+        return 'mon';
+      case DateTime.tuesday:
+        return 'tue';
+      case DateTime.wednesday:
+        return 'wed';
+      case DateTime.thursday:
+        return 'thu';
+      case DateTime.friday:
+        return 'fri';
+      case DateTime.saturday:
+        return 'sat';
+      case DateTime.sunday:
+        return 'sun';
+      default:
+        return 'mon';
+    }
+  }
+
+  String _dayLabel(String dayKey) {
+    switch (dayKey) {
+      case 'mon':
+        return 'Monday';
+      case 'tue':
+        return 'Tuesday';
+      case 'wed':
+        return 'Wednesday';
+      case 'thu':
+        return 'Thursday';
+      case 'fri':
+        return 'Friday';
+      case 'sat':
+        return 'Saturday';
+      case 'sun':
+        return 'Sunday';
+      default:
+        return dayKey;
+    }
+  }
+
+  Future<String?> _resolveDsfAccountId() async {
+    final col = FirebaseFirestore.instance.collection('dsfAccounts');
+    final direct = await col.doc(dsfId).get();
+    if (direct.exists) return direct.id;
+
+    final byUid = await col.where('uid', isEqualTo: dsfId).limit(1).get();
+    if (byUid.docs.isEmpty) return null;
+    return byUid.docs.first.id;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmedDutyId = dutyId?.trim();
+    if (trimmedDutyId == null || trimmedDutyId.isEmpty) {
+      return GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: const Text('Visit coverage will appear after duty starts.'),
+      );
+    }
+
+    final startAt = dateFromRaw(duty?['startAt']) ?? DateTime.now();
+    final dayKey = _dayKeyFromDate(startAt.toLocal());
+    final dayLabel = _dayLabel(dayKey);
+
+    return FutureBuilder<String?>(
+      future: _resolveDsfAccountId(),
+      builder: (context, dsfSnap) {
+        if (dsfSnap.connectionState == ConnectionState.waiting) {
+          return const GlassCard(
+            padding: EdgeInsets.all(16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final dsfAccountId = dsfSnap.data?.trim();
+        if (dsfAccountId == null || dsfAccountId.isEmpty) {
+          return const GlassCard(
+            padding: EdgeInsets.all(16),
+            child: Text('Unable to resolve DSF account for coverage.'),
+          );
+        }
+
+        final assignmentsStream = FirebaseFirestore.instance
+            .collection('seedTsas')
+            .doc(dsfAccountId)
+            .collection('dailyAssignments')
+            .doc(dayKey)
+            .collection('shops')
+            .snapshots();
+
+        final visitsStream = FirebaseFirestore.instance
+            .collection('duties')
+            .doc(trimmedDutyId)
+            .collection('shopVisits')
+            .snapshots();
+
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: assignmentsStream,
+          builder: (context, assignSnap) {
+            if (assignSnap.hasError) {
+              return GlassCard(
+                padding: const EdgeInsets.all(16),
+                child: Text(assignSnap.error.toString()),
+              );
+            }
+            if (!assignSnap.hasData) {
+              return const GlassCard(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final assignedShopIds = assignSnap.data!.docs
+                .map((doc) => doc.id.trim())
+                .where((id) => id.isNotEmpty)
+                .toSet();
+
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: visitsStream,
+              builder: (context, visitSnap) {
+                if (visitSnap.hasError) {
+                  return GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Text(visitSnap.error.toString()),
+                  );
+                }
+                if (!visitSnap.hasData) {
+                  return const GlassCard(
+                    padding: EdgeInsets.all(16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+
+                final visitedShopIds = visitSnap.data!.docs
+                    .map((doc) {
+                      final data = doc.data();
+                      final byField = (data['shopId'] as String?)?.trim();
+                      if (byField != null && byField.isNotEmpty) {
+                        return byField;
+                      }
+                      return doc.id.trim();
+                    })
+                    .where((id) => id.isNotEmpty)
+                    .toSet();
+
+                final visitedInPlan =
+                    assignedShopIds.where(visitedShopIds.contains).toList()
+                      ..sort();
+                final remainingInPlan =
+                    assignedShopIds
+                        .where((id) => !visitedShopIds.contains(id))
+                        .toList()
+                      ..sort();
+
+                return GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Visit Coverage',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$dayLabel · Assigned ${assignedShopIds.length} · Visited ${visitedInPlan.length} · Remaining ${remainingInPlan.length}',
+                        style: const TextStyle(
+                          color: AppTheme.mutedInk,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      if (visitedInPlan.isNotEmpty) ...[
+                        const Text(
+                          'Visited',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.bangladeshGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: visitedInPlan
+                              .take(6)
+                              .map(
+                                (id) => _MetaPill(
+                                  icon: Icons.check_circle_outline,
+                                  label: id,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      const Text(
+                        'Remaining',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      if (remainingInPlan.isEmpty)
+                        const Text(
+                          'No remaining shops. All assigned shops visited.',
+                          style: TextStyle(color: AppTheme.mutedInk),
+                        )
+                      else
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: remainingInPlan
+                              .take(8)
+                              .map(
+                                (id) => _MetaPill(
+                                  icon: Icons.storefront_outlined,
+                                  label: id,
+                                ),
+                              )
+                              .toList(),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
 class _MapCard extends StatefulWidget {
   final String title;
   final String status;
@@ -1290,19 +1678,27 @@ class _MapCardState extends State<_MapCard> {
     required VoidCallback onTap,
     String? tooltip,
   }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(10),
-      elevation: 2,
+      color: isDark
+          ? AppTheme.darkGreen.withValues(alpha: 0.82)
+          : Colors.white.withValues(alpha: 0.94),
+      borderRadius: BorderRadius.circular(12),
+      elevation: 3,
+      shadowColor: const Color(0x26000000),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         child: Tooltip(
           message: tooltip ?? '',
           child: SizedBox(
-            width: 34,
-            height: 34,
-            child: Icon(icon, size: 18, color: AppTheme.ink),
+            width: 38,
+            height: 38,
+            child: Icon(
+              icon,
+              size: 19,
+              color: isDark ? AppTheme.antiFlashWhite : AppTheme.darkGreen,
+            ),
           ),
         ),
       ),
@@ -1311,9 +1707,18 @@ class _MapCardState extends State<_MapCard> {
 
   @override
   Widget build(BuildContext context) {
+    final isWide = kIsWeb && MediaQuery.of(context).size.width >= 1120;
+    final mapHeight = isWide ? 360.0 : 300.0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final isActive = widget.status == 'active';
     final statusColor = isActive ? AppTheme.accent : AppTheme.mutedInk;
     final statusBg = isActive ? AppTheme.accentSoft : AppTheme.skySoft;
+    final frameBorderColor = isDark
+        ? AppTheme.mountainMeadow.withValues(alpha: 0.46)
+        : AppTheme.bangladeshGreen.withValues(alpha: 0.26);
+    final trailColor = isDark
+        ? AppTheme.caribbeanGreen
+        : AppTheme.bangladeshGreen;
     final mapPath = <LatLng>[...widget.trailPoints];
     if (mapPath.isEmpty || !_samePoint(mapPath.last, widget.point)) {
       mapPath.add(widget.point);
@@ -1366,8 +1771,32 @@ class _MapCardState extends State<_MapCard> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: statusColor,
+                    color: statusColor == AppTheme.accent
+                        ? AppTheme.richBlack
+                        : statusColor,
                   ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: isActive ? AppTheme.accent : AppTheme.mutedInk,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isActive ? 'Live TAS signal' : 'No active TAS signal',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.mutedInk,
                 ),
               ),
             ],
@@ -1376,12 +1805,22 @@ class _MapCardState extends State<_MapCard> {
           Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0x1A000000)),
+              border: Border.all(color: frameBorderColor),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  (isDark ? AppTheme.darkGreen : AppTheme.accentSoft)
+                      .withValues(alpha: isDark ? 0.24 : 0.16),
+                  (isDark ? AppTheme.bangladeshGreen : AppTheme.warmSoft)
+                      .withValues(alpha: isDark ? 0.12 : 0.1),
+                ],
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(18),
               child: SizedBox(
-                height: 300,
+                height: mapHeight,
                 child: Stack(
                   children: [
                     FlutterMap(
@@ -1401,8 +1840,8 @@ class _MapCardState extends State<_MapCard> {
                             polylines: [
                               Polyline(
                                 points: mapPath,
-                                strokeWidth: 4,
-                                color: AppTheme.sky,
+                                strokeWidth: 4.6,
+                                color: trailColor.withValues(alpha: 0.92),
                               ),
                             ],
                           ),
@@ -1415,10 +1854,10 @@ class _MapCardState extends State<_MapCard> {
                                 height: 22,
                                 child: Container(
                                   decoration: BoxDecoration(
-                                    color: AppTheme.sky,
+                                    color: trailColor,
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Colors.white,
+                                      color: AppTheme.antiFlashWhite,
                                       width: 2,
                                     ),
                                   ),
@@ -1428,27 +1867,64 @@ class _MapCardState extends State<_MapCard> {
                               point: widget.point,
                               width: 48,
                               height: 48,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: AppTheme.accent,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x33000000),
-                                      blurRadius: 12,
-                                      offset: Offset(0, 6),
+                              child: Stack(
+                                alignment: Alignment.center,
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.caribbeanGreen.withValues(
+                                        alpha: 0.28,
+                                      ),
+                                      shape: BoxShape.circle,
                                     ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.location_on,
-                                  color: Colors.white,
-                                ),
+                                  ),
+                                  Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: const BoxDecoration(
+                                      color: AppTheme.caribbeanGreen,
+                                      shape: BoxShape.circle,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Color(0x33000000),
+                                          blurRadius: 12,
+                                          offset: Offset(0, 6),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.place_rounded,
+                                      color: AppTheme.antiFlashWhite,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ],
+                    ),
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                (isDark ? AppTheme.darkGreen : Colors.white)
+                                    .withValues(alpha: isDark ? 0.07 : 0.02),
+                                Colors.transparent,
+                                (isDark ? Colors.black : AppTheme.warmSoft)
+                                    .withValues(alpha: isDark ? 0.05 : 0.03),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                     Positioned(
                       top: 10,
@@ -1459,22 +1935,39 @@ class _MapCardState extends State<_MapCard> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: isDark
+                              ? AppTheme.darkGreen.withValues(alpha: 0.88)
+                              : AppTheme.antiFlashWhite.withValues(alpha: 0.95),
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: const [
+                          boxShadow: [
                             BoxShadow(
                               color: Color(0x1A000000),
                               blurRadius: 8,
                               offset: Offset(0, 4),
                             ),
                           ],
+                          border: Border.all(
+                            color: isDark
+                                ? AppTheme.mountainMeadow.withValues(
+                                    alpha: 0.42,
+                                  )
+                                : AppTheme.bangladeshGreen.withValues(
+                                    alpha: 0.22,
+                                  ),
+                          ),
                         ),
                         child: Text(
                           widget.pointLabel,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
-                            color: AppTheme.ink,
+                            color: isActive
+                                ? (isDark
+                                      ? AppTheme.caribbeanGreen
+                                      : AppTheme.bangladeshGreen)
+                                : (isDark
+                                      ? AppTheme.antiFlashWhite
+                                      : AppTheme.ink),
                           ),
                         ),
                       ),

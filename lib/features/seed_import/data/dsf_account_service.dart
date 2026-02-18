@@ -47,10 +47,24 @@ class DsfAccount {
       return null;
     }
 
-    final rawPhotoUrl = data['photoUrl'];
-    final photoUrl = rawPhotoUrl is String && rawPhotoUrl.trim().isNotEmpty
-        ? rawPhotoUrl.trim()
-        : null;
+    String? readPhotoUrl(Map<String, dynamic> source) {
+      const keys = <String>[
+        'photoUrl',
+        'photoURL',
+        'profilePhotoUrl',
+        'avatarUrl',
+      ];
+      for (final key in keys) {
+        final raw = source[key];
+        if (raw is String) {
+          final cleaned = raw.trim();
+          if (cleaned.isNotEmpty) return cleaned;
+        }
+      }
+      return null;
+    }
+
+    final photoUrl = readPhotoUrl(data);
 
     return DsfAccount(
       tsaId: (data['tsaId'] as String?) ?? doc.id,

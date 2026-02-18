@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../controllers/auth_controller.dart';
 
 class LoginPage extends StatefulWidget {
@@ -32,6 +33,11 @@ class _LoginPageState extends State<LoginPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const Align(
+                        alignment: Alignment.centerRight,
+                        child: ThemeModeToggleButton(),
+                      ),
+                      const SizedBox(height: 8),
                       Container(
                         height: 120,
                         width: 120,

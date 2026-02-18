@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -10,7 +11,9 @@ import 'dart:convert';
 import '../../../../app/routes/app_routes.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 
 class TsaDetailPage extends StatelessWidget {
@@ -149,10 +152,9 @@ class TsaDetailPage extends StatelessWidget {
 
     if (confirmed == true) {
       if (!context.mounted) return;
-      Get.snackbar(
+      AppToast.success(
         'Saved',
-        'Assignments updated for ${_labelForDayKey(dayKey)}.',
-        snackPosition: SnackPosition.BOTTOM,
+        message: 'Assignments updated for ${_labelForDayKey(dayKey)}.',
       );
     }
   }
@@ -488,10 +490,9 @@ class TsaDetailPage extends StatelessWidget {
                           parsed.isNaN ||
                           parsed < 0 ||
                           parsed > 100) {
-                        Get.snackbar(
+                        AppToast.warning(
                           'Invalid discount',
-                          'Enter discount between 0 and 100.',
-                          snackPosition: SnackPosition.BOTTOM,
+                          message: 'Enter discount between 0 and 100.',
                         );
                         return;
                       }
@@ -567,11 +568,7 @@ class TsaDetailPage extends StatelessWidget {
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
-    Get.snackbar(
-      'Shop added',
-      result.code,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    AppToast.success('Shop added', message: result.code);
   }
 
   Future<void> _addExistingShop(BuildContext context, String tsaId) async {
@@ -581,10 +578,9 @@ class TsaDetailPage extends StatelessWidget {
         .get();
     if (!context.mounted) return;
     if (globalShops.docs.isEmpty) {
-      Get.snackbar(
-        'You don’t have any shops',
-        'Add a shop first, then pick from existing.',
-        snackPosition: SnackPosition.BOTTOM,
+      AppToast.warning(
+        'No shops found',
+        message: 'Add a shop first, then pick from existing.',
       );
       return;
     }
@@ -663,11 +659,7 @@ class TsaDetailPage extends StatelessWidget {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-    Get.snackbar(
-      'Shop added',
-      '$code added from existing shops',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    AppToast.success('Shop added', message: '$code added from existing shops');
   }
 
   Future<void> _openAddShopChoice(BuildContext context, String tsaId) async {
@@ -777,6 +769,7 @@ class TsaDetailPage extends StatelessWidget {
         ),
         title: Text(tsaName),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             onPressed: () async {
               final dayKey = await _pickDayKey(context);
@@ -828,7 +821,7 @@ class TsaDetailPage extends StatelessWidget {
               );
             }
 
-            return ListView.separated(
+            final list = ListView.separated(
               itemCount: docs.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
@@ -897,6 +890,63 @@ class TsaDetailPage extends StatelessWidget {
                   ),
                 );
               },
+            );
+
+            if (!kIsWeb) return list;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 40,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.storefront_outlined,
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'TSA Shops Workspace',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${docs.length} shops linked with $tsaName',
+                              style: const TextStyle(
+                                color: AppTheme.mutedInk,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => _openAddShopChoice(context, tsaId),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Shop'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(child: list),
+              ],
             );
           },
         ),

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/logged_in_name_text.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class DistributorDashboardPage extends StatelessWidget {
@@ -13,6 +15,114 @@ class DistributorDashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authController = Get.find<AuthController>();
+    if (kIsWeb) {
+      return Scaffold(
+        appBar: AppBar(
+          toolbarHeight: 70,
+          title: const Text('Distributor Dashboard'),
+          actions: [
+            const ThemeModeToggleButton(),
+            TextButton.icon(
+              onPressed: () => authController.logout(),
+              icon: const Icon(Icons.logout, size: 18),
+              label: const Text('Logout'),
+            ),
+            const SizedBox(width: 12),
+          ],
+        ),
+        body: AppShell(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1180),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        GlassCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Distributor Workspace',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 22,
+                                  color: AppTheme.ink,
+                                ),
+                              ),
+                              SizedBox(height: 6),
+                              LoggedInNameText(
+                                prefix: 'Hi, ',
+                                fallback: 'Distributor',
+                                style: TextStyle(color: AppTheme.mutedInk),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        GlassCard(
+                          onTap: () => Get.toNamed(AppRoutes.seedTsaList),
+                          child: Row(
+                            children: const [
+                              Icon(
+                                Icons.store_mall_directory_outlined,
+                                color: AppTheme.accent,
+                              ),
+                              SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'View TSAs',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.ink,
+                                  ),
+                                ),
+                              ),
+                              Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: AppTheme.mutedInk,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  SizedBox(
+                    width: 320,
+                    child: GlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Quick Notes',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.ink,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Review TSA progress and outlet coverage from the master list.',
+                            style: TextStyle(color: AppTheme.mutedInk),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 70,
@@ -29,6 +139,7 @@ class DistributorDashboardPage extends StatelessWidget {
           ],
         ),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             onPressed: () => authController.logout(),
             icon: const Icon(Icons.logout),

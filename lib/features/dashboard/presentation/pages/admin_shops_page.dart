@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,7 +11,9 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 
 class AdminShopsPage extends StatelessWidget {
@@ -59,6 +62,7 @@ class AdminShopsPage extends StatelessWidget {
             ),
           ],
         ),
+        actions: const [ThemeModeToggleButton(), SizedBox(width: 8)],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(context, shopsCol: shopsCol),
@@ -78,7 +82,7 @@ class AdminShopsPage extends StatelessWidget {
             if (docs.isEmpty) {
               return const Center(child: Text('No shops yet. Add your first.'));
             }
-            return ListView.separated(
+            final list = ListView.separated(
               itemCount: docs.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
@@ -171,17 +175,16 @@ class AdminShopsPage extends StatelessWidget {
                               shopId: doc.id,
                             );
                             if (!context.mounted) return;
-                            Get.snackbar(
+                            AppToast.success(
                               'Deleted',
-                              'Shop "$shopCode" removed from $deletedCount records.',
-                              snackPosition: SnackPosition.BOTTOM,
+                              message:
+                                  'Shop "$shopCode" removed from $deletedCount records.',
                             );
                           } catch (e) {
                             if (!context.mounted) return;
-                            Get.snackbar(
+                            AppToast.error(
                               'Delete failed',
-                              e.toString(),
-                              snackPosition: SnackPosition.BOTTOM,
+                              message: e.toString(),
                             );
                           }
                         },
@@ -190,6 +193,63 @@ class AdminShopsPage extends StatelessWidget {
                   ),
                 );
               },
+            );
+
+            if (!kIsWeb) return list;
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                GlassCard(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        height: 40,
+                        width: 40,
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentSoft,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.store_mall_directory_outlined,
+                          color: AppTheme.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Shops Workspace',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.ink,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${docs.length} shops in network',
+                              style: const TextStyle(
+                                color: AppTheme.mutedInk,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => _openForm(context, shopsCol: shopsCol),
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Shop'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(child: list),
+              ],
             );
           },
         ),
@@ -568,16 +628,15 @@ class AdminShopsPage extends StatelessWidget {
                                     if (context.mounted) {
                                       Navigator.of(context).pop();
                                     }
-                                    Get.snackbar(
+                                    AppToast.success(
                                       'Deleted',
-                                      'Shop $shopCode removed ($deletedCount records).',
-                                      snackPosition: SnackPosition.BOTTOM,
+                                      message:
+                                          'Shop $shopCode removed ($deletedCount records).',
                                     );
                                   } catch (e) {
-                                    Get.snackbar(
+                                    AppToast.error(
                                       'Delete failed',
-                                      e.toString(),
-                                      snackPosition: SnackPosition.BOTTOM,
+                                      message: e.toString(),
                                     );
                                   } finally {
                                     if (context.mounted) {
@@ -638,10 +697,10 @@ class AdminShopsPage extends StatelessWidget {
                                       parsed.isNaN ||
                                       parsed < 0 ||
                                       parsed > 100) {
-                                    Get.snackbar(
+                                    AppToast.warning(
                                       'Invalid discount',
-                                      'Enter discount between 0 and 100.',
-                                      snackPosition: SnackPosition.BOTTOM,
+                                      message:
+                                          'Enter discount between 0 and 100.',
                                     );
                                     return;
                                   }
@@ -684,10 +743,9 @@ class AdminShopsPage extends StatelessWidget {
                                 if (context.mounted) {
                                   Navigator.of(context).pop();
                                 }
-                                Get.snackbar(
+                                AppToast.success(
                                   'Saved',
-                                  'Shop $code saved',
-                                  snackPosition: SnackPosition.BOTTOM,
+                                  message: 'Shop $code saved',
                                 );
                               },
                         child: const Text('Save'),

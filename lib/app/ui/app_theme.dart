@@ -19,6 +19,9 @@ class AppTheme {
   static const Color warmSoft = Color(0xFFDFF5EE);
   static const Color sky = mountainMeadow;
   static const Color skySoft = Color(0xFFE7F7F1);
+  static const Color lightSurface = Color(0xFFE3F3ED);
+  static const Color lightInput = Color(0xFFD8EFE6);
+  static const Color lightAppBar = Color(0xFFDAEEE6);
 
   static LinearGradient backgroundFor(Brightness brightness) {
     if (brightness == Brightness.dark) {
@@ -31,7 +34,7 @@ class AppTheme {
     return const LinearGradient(
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
-      colors: [antiFlashWhite, Color(0xFFE7F7F1), Color(0xFFD4F2E6)],
+      colors: [Color(0xFFE2F4ED), Color(0xFFD8F0E7), Color(0xFFC7EADC)],
     );
   }
 
@@ -43,10 +46,8 @@ class AppTheme {
     final isDark = brightness == Brightness.dark;
     final inkColor = ink;
     final mutedColor = mutedInk;
-    final cardColor = isDark ? const Color(0xFFE2F5EE) : antiFlashWhite;
-    final inputFillColor = isDark
-        ? const Color(0xFFD6F0E7)
-        : const Color(0xFFE8F8F2);
+    final cardColor = isDark ? const Color(0xFFE2F5EE) : lightSurface;
+    final inputFillColor = isDark ? const Color(0xFFD6F0E7) : lightInput;
 
     final scheme = ColorScheme(
       brightness: brightness,
@@ -75,7 +76,7 @@ class AppTheme {
         bodySmall: TextStyle(color: mutedColor),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: cardColor,
+        backgroundColor: isDark ? cardColor : lightAppBar,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
         centerTitle: false,
@@ -197,7 +198,7 @@ class AppTheme {
       chipTheme: base.chipTheme.copyWith(
         backgroundColor: isDark
             ? const Color(0xFF1A4E48)
-            : const Color(0xFFDFF4EC),
+            : const Color(0xFFCEE9DE),
         labelStyle: TextStyle(color: inkColor),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

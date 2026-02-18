@@ -8,7 +8,9 @@ import '../../../../app/routes/app_routes.dart';
 import '../../../../core/utils/file_save.dart';
 import '../../../reports/domain/export/excel_exporter.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class ShopDetailPage extends StatelessWidget {
@@ -155,12 +157,11 @@ class ShopDetailPage extends StatelessWidget {
       opened = await launchUrl(fallbackMapUri, webOnlyWindowName: '_blank');
     }
     if (!context.mounted) return;
-    Get.snackbar(
+    AppToast.info(
       opened ? 'Shared' : 'Copied',
-      opened
+      message: opened
           ? 'Location copied and map opened.'
           : 'Location copied. Could not open map.',
-      snackPosition: SnackPosition.BOTTOM,
     );
   }
 
@@ -513,20 +514,15 @@ class ShopDetailPage extends StatelessWidget {
       );
 
       if (!context.mounted) return;
-      Get.snackbar(
+      AppToast.success(
         'Export complete',
-        savedPath == null
+        message: savedPath == null
             ? 'Excel download started.'
             : 'Excel saved to: $savedPath',
-        snackPosition: SnackPosition.BOTTOM,
       );
     } catch (e) {
       if (!context.mounted) return;
-      Get.snackbar(
-        'Export failed',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      AppToast.error('Export failed', message: e.toString());
     }
   }
 
@@ -564,6 +560,7 @@ class ShopDetailPage extends StatelessWidget {
         ),
         title: Text(shopTitle),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             onPressed: () => authController.logout(),
             icon: const Icon(Icons.logout),

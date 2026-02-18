@@ -1,10 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../data/dsf_account_service.dart';
 import '../../data/seed_utils.dart';
@@ -91,10 +94,9 @@ class TsaListPage extends StatelessWidget {
     final ref = col.doc(result.tsaId);
     final existing = await ref.get();
     if (existing.exists) {
-      Get.snackbar(
+      AppToast.warning(
         'TSA already exists',
-        'A TSA with id "${result.tsaId}" already exists.',
-        snackPosition: SnackPosition.BOTTOM,
+        message: 'A TSA with id "${result.tsaId}" already exists.',
       );
       return;
     }
@@ -105,11 +107,7 @@ class TsaListPage extends StatelessWidget {
       if (result.sheetName.isNotEmpty) 'sheetName': result.sheetName,
       'createdAt': FieldValue.serverTimestamp(),
     });
-    Get.snackbar(
-      'TSA created',
-      result.name,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    AppToast.success('TSA created', message: result.name);
   }
 
   Future<void> _deleteDocsByQuery(Query<Map<String, dynamic>> query) async {
@@ -342,6 +340,7 @@ class TsaListPage extends StatelessWidget {
             ],
           ),
           actions: [
+            const ThemeModeToggleButton(),
             IconButton(
               onPressed: () => authController.logout(),
               icon: const Icon(Icons.logout),
@@ -371,7 +370,7 @@ class TsaListPage extends StatelessWidget {
                 );
               }
 
-              return ListView.separated(
+              final list = ListView.separated(
                 itemCount: docs.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
@@ -448,17 +447,16 @@ class TsaListPage extends StatelessWidget {
                             try {
                               await _deleteTsaEverywhere(doc.id);
                               if (!context.mounted) return;
-                              Get.snackbar(
+                              AppToast.success(
                                 'Deleted',
-                                'TSA "$name" and all related data removed.',
-                                snackPosition: SnackPosition.BOTTOM,
+                                message:
+                                    'TSA "$name" and all related data removed.',
                               );
                             } catch (e) {
                               if (!context.mounted) return;
-                              Get.snackbar(
+                              AppToast.error(
                                 'Delete failed',
-                                e.toString(),
-                                snackPosition: SnackPosition.BOTTOM,
+                                message: e.toString(),
                               );
                             }
                           },
@@ -476,6 +474,63 @@ class TsaListPage extends StatelessWidget {
                     ),
                   );
                 },
+              );
+
+              if (!kIsWeb) return list;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 40,
+                          width: 40,
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentSoft,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.groups_outlined,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'TSA Workspace',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${docs.length} TSA profiles available',
+                                style: const TextStyle(
+                                  color: AppTheme.mutedInk,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => _createTsa(context),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Create TSA'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Expanded(child: list),
+                ],
               );
             },
           ),

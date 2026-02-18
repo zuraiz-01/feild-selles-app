@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -13,7 +15,9 @@ import 'dart:convert';
 import '../../data/dsf_account_service.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
+import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
@@ -473,6 +477,8 @@ class _PlaceResult {
 
 class _TsaAccountPageState extends State<TsaAccountPage> {
   static const int _defaultShopWaitSeconds = 300;
+  static const Duration _profileUploadTimeout = Duration(minutes: 3);
+  static const int _profileUploadMaxAttempts = 3;
 
   final _name = TextEditingController();
   final _email = TextEditingController();
@@ -493,7 +499,9 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   bool _showCredentialPassword = false;
   bool _showFormPassword = false;
   String? _photoUrl;
+  Uint8List? _localPhotoBytes;
   bool _removePhotoOnSave = false;
+  bool _didInitMissingAccountForm = false;
   Map<String, String>? _editSnapshot;
   String? _loadedOfficeFor;
   final List<_RecentOfficeLocation> _recentLocations = [];
@@ -501,6 +509,11 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   bool _recentLoaded = false;
 
   DsfAccountService get _service => Get.find<DsfAccountService>();
+
+  void _setStateIfMounted(VoidCallback fn) {
+    if (!mounted) return;
+    setState(fn);
+  }
 
   @override
   void initState() {
@@ -579,7 +592,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         parsed.add(item);
       }
     }
-    setState(() {
+    _setStateIfMounted(() {
       _recentLocations
         ..clear()
         ..addAll(parsed);
@@ -604,7 +617,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     }
     _selectedRecent = location;
     await _saveRecentLocations();
-    setState(() {});
+    _setStateIfMounted(() {});
   }
 
   void _applyRecent(_RecentOfficeLocation location) {
@@ -639,16 +652,36 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         radiusMeters: result.radiusMeters,
       ),
     );
-    setState(() {
+    _setStateIfMounted(() {
       _officeLat.text = result.center.latitude.toStringAsFixed(6);
       _officeLng.text = result.center.longitude.toStringAsFixed(6);
       _officeRadius.text = result.radiusMeters.toStringAsFixed(0);
     });
   }
 
-  Widget _buildProfileAvatar({double size = 56}) {
-    final url = _photoUrl?.trim();
-    final hasPhoto = url != null && url.isNotEmpty;
+  String? _normalizedPhotoUrl(String? raw) {
+    if (raw == null) return null;
+    final cleaned = raw.trim();
+    if (cleaned.isEmpty) return null;
+    return cleaned;
+  }
+
+  Widget _buildProfileAvatar({double size = 56, String? fallbackUrl}) {
+    if (_localPhotoBytes != null && _localPhotoBytes!.isNotEmpty) {
+      final borderRadius = BorderRadius.circular(size / 2.5);
+      return ClipRRect(
+        borderRadius: borderRadius,
+        child: Image.memory(
+          _localPhotoBytes!,
+          height: size,
+          width: size,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+    final url =
+        _normalizedPhotoUrl(_photoUrl) ?? _normalizedPhotoUrl(fallbackUrl);
+    final hasPhoto = url != null;
     final borderRadius = BorderRadius.circular(size / 2.5);
     if (!hasPhoto) {
       return Container(
@@ -679,16 +712,50 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     );
   }
 
+  Future<String> _uploadProfilePhoto({
+    required String tsaId,
+    required Uint8List bytes,
+  }) async {
+    Object? lastError;
+    for (var attempt = 1; attempt <= _profileUploadMaxAttempts; attempt++) {
+      final path =
+          'dsf_profiles/$tsaId/profile_${DateTime.now().millisecondsSinceEpoch}_$attempt.jpg';
+      final ref = FirebaseStorage.instance.ref().child(path);
+      try {
+        final task = ref.putData(
+          bytes,
+          SettableMetadata(contentType: 'image/jpeg'),
+        );
+        await task.timeout(
+          _profileUploadTimeout,
+          onTimeout: () async {
+            await task.cancel();
+            throw TimeoutException('Image upload timeout');
+          },
+        );
+        return await ref.getDownloadURL();
+      } catch (e) {
+        lastError = e;
+        if (attempt < _profileUploadMaxAttempts) {
+          await Future<void>.delayed(Duration(milliseconds: 700 * attempt));
+        }
+      }
+    }
+    throw StateError(lastError?.toString() ?? 'Image upload failed.');
+  }
+
   Future<void> _pickAndUploadProfilePhoto({required String tsaId}) async {
     if (_isPhotoUploading) return;
     final picked = await _imagePicker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 85,
+      imageQuality: 75,
       maxWidth: 1280,
+      maxHeight: 1280,
     );
     if (picked == null) return;
+    if (!mounted) return;
 
-    setState(() {
+    _setStateIfMounted(() {
       _isPhotoUploading = true;
       _status = null;
     });
@@ -697,37 +764,87 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       if (bytes.isEmpty) {
         throw StateError('Selected image is empty.');
       }
-      final ref = FirebaseStorage.instance.ref().child(
-        'dsf_profiles/$tsaId/profile.jpg',
-      );
-      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      final url = await ref.getDownloadURL();
-      setState(() {
+      _setStateIfMounted(() {
+        _localPhotoBytes = bytes;
+      });
+
+      final oldUrl =
+          _normalizedPhotoUrl(_photoUrl) ??
+          _normalizedPhotoUrl(_lastAccount?.photoUrl);
+      final url = await _uploadProfilePhoto(tsaId: tsaId, bytes: bytes);
+
+      if (oldUrl != null && oldUrl.isNotEmpty && oldUrl != url) {
+        try {
+          await FirebaseStorage.instance.refFromURL(oldUrl).delete();
+        } catch (_) {
+          // Ignore old-file cleanup errors.
+        }
+      }
+
+      _setStateIfMounted(() {
         _photoUrl = url;
         _removePhotoOnSave = false;
         _status = _lastAccount == null
             ? 'Photo attached. Create account to save it.'
             : 'Photo ready. Press Update to save changes.';
       });
-    } catch (e) {
-      setState(() {
-        _status = 'Photo upload failed: $e';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPhotoUploading = false;
-        });
+
+      // Existing account: persist photo immediately so it does not wait for Update.
+      if (_lastAccount != null) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('dsfAccounts')
+              .doc(tsaId)
+              .set({
+                'photoUrl': url,
+                'updatedAt': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+          if (mounted) {
+            _setStateIfMounted(() {
+              _localPhotoBytes = null;
+              _removePhotoOnSave = false;
+              _status = 'Photo updated.';
+            });
+          }
+          AppToast.success('Photo updated');
+        } catch (e) {
+          if (mounted) {
+            _setStateIfMounted(() {
+              _status = 'Photo uploaded but save failed: $e';
+            });
+          }
+          AppToast.warning(
+            'Photo uploaded',
+            message: 'Could not save photo field automatically.',
+          );
+        }
+      } else {
+        AppToast.success('Photo uploaded', message: 'Profile photo is ready.');
       }
+    } catch (e) {
+      final message = e is TimeoutException
+          ? 'Upload is slow. Please check internet and try again.'
+          : '$e';
+      _setStateIfMounted(() {
+        _localPhotoBytes = null;
+        _status = 'Photo upload failed: $message';
+      });
+      AppToast.error('Photo upload failed', message: message);
+    } finally {
+      _setStateIfMounted(() {
+        _isPhotoUploading = false;
+      });
     }
   }
 
   Future<void> _removeProfilePhoto({required bool hasExistingAccount}) async {
-    final current = _photoUrl?.trim();
+    final current =
+        _normalizedPhotoUrl(_photoUrl) ??
+        _normalizedPhotoUrl(_lastAccount?.photoUrl);
     if (current == null || current.isEmpty) return;
     if (_isPhotoUploading) return;
 
-    setState(() {
+    _setStateIfMounted(() {
       _isPhotoUploading = true;
       _status = null;
     });
@@ -737,19 +854,42 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       } catch (_) {
         // ignore storage deletion errors; Firestore value removal is enough
       }
-      setState(() {
+      _setStateIfMounted(() {
         _photoUrl = null;
+        _localPhotoBytes = null;
         _removePhotoOnSave = hasExistingAccount;
         _status = hasExistingAccount
             ? 'Photo removed. Press Update to save changes.'
             : 'Photo removed.';
       });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isPhotoUploading = false;
-        });
+
+      if (hasExistingAccount) {
+        try {
+          final currentTsaId = _lastAccount?.tsaId;
+          if (currentTsaId != null && currentTsaId.isNotEmpty) {
+            await FirebaseFirestore.instance
+                .collection('dsfAccounts')
+                .doc(currentTsaId)
+                .set({
+                  'photoUrl': FieldValue.delete(),
+                  'updatedAt': FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+          }
+          if (mounted) {
+            _setStateIfMounted(() {
+              _removePhotoOnSave = false;
+              _status = 'Photo removed.';
+            });
+          }
+        } catch (_) {
+          // Keep _removePhotoOnSave=true as fallback for manual Update.
+        }
       }
+      AppToast.info('Photo removed');
+    } finally {
+      _setStateIfMounted(() {
+        _isPhotoUploading = false;
+      });
     }
   }
 
@@ -759,7 +899,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       'email': _email.text,
       'password': _password.text,
       'distributorId': _distributorId.text,
-      'photoUrl': _photoUrl ?? '',
+      'photoUrl': _photoUrl ?? _lastAccount?.photoUrl ?? '',
       'removePhotoOnSave': _removePhotoOnSave ? '1' : '0',
       'officeLat': _officeLat.text,
       'officeLng': _officeLng.text,
@@ -779,6 +919,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     _photoUrl = (snap['photoUrl'] ?? '').trim().isEmpty
         ? null
         : snap['photoUrl'];
+    _localPhotoBytes = null;
     _removePhotoOnSave = snap['removePhotoOnSave'] == '1';
     _officeLat.text = snap['officeLat'] ?? '';
     _officeLng.text = snap['officeLng'] ?? '';
@@ -811,6 +952,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     DsfAccount? account,
   }) {
     if (account != null) {
+      _didInitMissingAccountForm = false;
       final hasChanged =
           _lastAccount == null ||
           _lastAccount!.uid != account.uid ||
@@ -830,10 +972,18 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
             ? tsaId
             : account.distributorId;
         _photoUrl = account.photoUrl;
+        _localPhotoBytes = null;
         _removePhotoOnSave = false;
         _setWaitControllersFromTotalSeconds(
           account.shopVisitWaitSeconds ?? _defaultShopWaitSeconds,
         );
+      }
+      if (!_isEditMode &&
+          ((_normalizedPhotoUrl(_photoUrl) ?? '') !=
+              (_normalizedPhotoUrl(account.photoUrl) ?? ''))) {
+        _photoUrl = account.photoUrl;
+        _localPhotoBytes = null;
+        _removePhotoOnSave = false;
       }
       _lastAccount = account;
       if (!_isEditMode) {
@@ -842,12 +992,14 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       return;
     }
 
-    if (_lastAccount == null) {
+    if (_lastAccount == null && !_didInitMissingAccountForm) {
+      _didInitMissingAccountForm = true;
       _name.text = tsaName;
       _email.text = _service.emailForTsa(tsaId);
       _password.text = '';
       _distributorId.text = tsaId;
       _photoUrl = null;
+      _localPhotoBytes = null;
       _removePhotoOnSave = false;
       _setWaitControllersFromTotalSeconds(_defaultShopWaitSeconds);
       if (!_isEditMode) {
@@ -893,9 +1045,12 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       );
       _status = 'Created DSF: ${account.email}';
       _isEditMode = false;
+      _localPhotoBytes = null;
       _removePhotoOnSave = false;
+      AppToast.success('DSF account created', message: account.email);
     } catch (e) {
       _status = 'Create failed: $e';
+      AppToast.error('Create failed', message: '$e');
     } finally {
       if (mounted) {
         setState(() => _isWorking = false);
@@ -948,9 +1103,12 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       );
       _status = 'Updated DSF: ${account.email}';
       _isEditMode = false;
+      _localPhotoBytes = null;
       _removePhotoOnSave = false;
+      AppToast.success('DSF account updated', message: account.email);
     } catch (e) {
       _status = 'Update failed: $e';
+      AppToast.error('Update failed', message: '$e');
     } finally {
       if (mounted) {
         setState(() => _isWorking = false);
@@ -967,11 +1125,15 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       await _service.deleteAccount(tsaId: tsaId);
       _status = 'Deleted DSF account for TSA';
       _lastAccount = null;
+      _didInitMissingAccountForm = false;
       _isEditMode = false;
       _photoUrl = null;
+      _localPhotoBytes = null;
       _removePhotoOnSave = false;
+      AppToast.success('DSF account deleted');
     } catch (e) {
       _status = 'Delete failed: $e';
+      AppToast.error('Delete failed', message: '$e');
     } finally {
       if (mounted) {
         setState(() => _isWorking = false);
@@ -1023,6 +1185,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         ),
         title: Text(tsaName),
         actions: [
+          const ThemeModeToggleButton(),
           IconButton(
             onPressed: () => authController.logout(),
             icon: const Icon(Icons.logout),
@@ -1040,6 +1203,53 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
 
             return ListView(
               children: [
+                if (kIsWeb) ...[
+                  GlassCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Container(
+                          height: 44,
+                          width: 44,
+                          decoration: BoxDecoration(
+                            color: AppTheme.accentSoft,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Icon(
+                            Icons.manage_accounts_outlined,
+                            color: AppTheme.accent,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'DSF Account Workspace',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                account == null
+                                    ? 'Create and configure DSF account'
+                                    : 'Manage profile, photo and geofence settings',
+                                style: const TextStyle(
+                                  color: AppTheme.mutedInk,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 SectionTitle(
                   title: 'TSA Profile',
                   subtitle: isEditable
@@ -1053,7 +1263,10 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                     children: [
                       Row(
                         children: [
-                          _buildProfileAvatar(size: 52),
+                          _buildProfileAvatar(
+                            size: 52,
+                            fallbackUrl: account?.photoUrl,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -1097,14 +1310,18 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                                     )
                                   : const Icon(Icons.photo_library_outlined),
                               label: Text(
-                                _photoUrl == null ||
-                                        (_photoUrl?.trim().isEmpty ?? true)
+                                ((_normalizedPhotoUrl(_photoUrl) ??
+                                            _normalizedPhotoUrl(
+                                              account?.photoUrl,
+                                            )) ==
+                                        null)
                                     ? 'Add photo'
                                     : 'Update photo',
                               ),
                             ),
-                            if (_photoUrl != null &&
-                                (_photoUrl?.trim().isNotEmpty ?? false))
+                            if ((_normalizedPhotoUrl(_photoUrl) ??
+                                    _normalizedPhotoUrl(account?.photoUrl)) !=
+                                null)
                               OutlinedButton.icon(
                                 onPressed: _isPhotoUploading
                                     ? null
