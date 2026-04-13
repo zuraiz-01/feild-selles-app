@@ -148,6 +148,18 @@ class EndDutyUseCase {
         .toSet();
     if (dailyIds.isNotEmpty) return dailyIds;
 
+    final tsaShopSnap = await _firestore
+        .collection('seedTsas')
+        .doc(dsfAccountId)
+        .collection('shops')
+        .get();
+    final tsaIds = tsaShopSnap.docs
+        .where((doc) => _isScheduledForDay(doc.data(), assignmentDayKey))
+        .map((doc) => doc.id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (tsaIds.isNotEmpty) return tsaIds;
+
     final byId = await _firestore
         .collection('shops')
         .where('assignedDsfId', isEqualTo: dsfAccountId)

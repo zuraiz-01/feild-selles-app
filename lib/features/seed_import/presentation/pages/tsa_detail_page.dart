@@ -16,6 +16,7 @@ import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/models/user_role.dart';
 import '../../../../core/services/session/session_service.dart';
+import '../../../../core/utils/shop_assignment_sync.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 import '../../data/seed_utils.dart';
 
@@ -37,6 +38,28 @@ class TsaDetailPage extends StatelessWidget {
 
   bool _isImportedShop(Map<String, dynamic> data) {
     return data['importId'] != null || data['importedAt'] != null;
+  }
+
+  String _resolveDsfUid(
+    QuerySnapshot<Map<String, dynamic>> dsfOptions,
+    String? dsfId,
+  ) {
+    final id = dsfId?.trim();
+    if (id == null || id.isEmpty) return '';
+    final matches = dsfOptions.docs.where((doc) => doc.id == id).toList();
+    if (matches.length != 1) return '';
+    return (matches.single.data()['uid'] as String?)?.trim() ?? '';
+  }
+
+  String _resolveDsfName(
+    QuerySnapshot<Map<String, dynamic>> dsfOptions,
+    String? dsfId,
+  ) {
+    final id = dsfId?.trim();
+    if (id == null || id.isEmpty) return '';
+    final matches = dsfOptions.docs.where((doc) => doc.id == id).toList();
+    if (matches.length != 1) return '';
+    return (matches.single.data()['name'] as String?)?.trim() ?? '';
   }
 
   static const _dayOptions = <Map<String, String>>[
@@ -569,6 +592,7 @@ class TsaDetailPage extends StatelessWidget {
       'discountPct': result.discountEnabled ? result.discountPct : 0.0,
       'tsaId': tsaId,
       'assignedDsfId': result.dsfId ?? '',
+      'assignedDsfUid': _resolveDsfUid(dsfOptions, result.dsfId),
       'schedule': result.schedule,
       'updatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
@@ -595,16 +619,50 @@ class TsaDetailPage extends StatelessWidget {
       if (result.area.isNotEmpty) 'area': result.area,
       if (result.lat != null && result.lng != null)
         'location': {'lat': result.lat, 'lng': result.lng},
+      'assignedDsfId': result.dsfId ?? '',
+      'assignedDsfUid': _resolveDsfUid(dsfOptions, result.dsfId),
+      'schedule': result.schedule,
       'tsaId': tsaId,
       'source': 'admin_dialog',
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    await syncShopTsaAssignment(
+      firestore: FirebaseFirestore.instance,
+      shopId: shopId,
+      previousTsaId: null,
+      previousSchedule: null,
+      nextTsaId: tsaId,
+      nextSchedule: result.schedule,
+      nextTsaName: _resolveDsfName(dsfOptions, tsaId),
+      nextTsaShopData: {
+        'shopId': shopId,
+        'code': result.code,
+        'name': result.name,
+        'filer': result.filer,
+        'discountEnabled': result.discountEnabled,
+        'discountPct': result.discountEnabled ? result.discountPct : 0.0,
+        if (result.area.isNotEmpty) 'area': result.area,
+        if (result.lat != null && result.lng != null)
+          'location': {'lat': result.lat, 'lng': result.lng},
+        'assignedDsfId': result.dsfId ?? '',
+        'assignedDsfUid': _resolveDsfUid(dsfOptions, result.dsfId),
+        'schedule': result.schedule,
+        'tsaId': tsaId,
+        'source': 'admin_dialog',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
 
     AppToast.success('Shop added', message: result.code);
   }
 
   Future<void> _addExistingShop(BuildContext context, String tsaId) async {
+    final dsfOptions = await FirebaseFirestore.instance
+        .collection('dsfAccounts')
+        .orderBy('name')
+        .get();
     final globalShops = await FirebaseFirestore.instance
         .collection('shops')
         .orderBy('code')
@@ -676,6 +734,7 @@ class TsaDetailPage extends StatelessWidget {
     final code = (data['code'] as String?) ?? doc.id;
     final name = (data['name'] as String?) ?? '';
     final area = (data['area'] as String?) ?? '';
+    final schedule = normalizeShopSchedule(data['schedule'] as Map?);
     final tsaShopRef = FirebaseFirestore.instance
         .collection('seedTsas')
         .doc(tsaId)
@@ -687,11 +746,43 @@ class TsaDetailPage extends StatelessWidget {
       'name': name,
       if (area.isNotEmpty) 'area': area,
       if (data['location'] is Map) 'location': data['location'],
+      'filer': data['filer'] == true,
+      'discountEnabled': (data['discountEnabled'] as bool?) ?? true,
+      'discountPct': (data['discountPct'] as num?)?.toDouble() ?? 0.0,
+      'assignedDsfId': (data['assignedDsfId'] as String?) ?? '',
+      'assignedDsfUid': (data['assignedDsfUid'] as String?) ?? '',
+      'schedule': schedule,
       'tsaId': tsaId,
       'source': 'global_shops',
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    await syncShopTsaAssignment(
+      firestore: FirebaseFirestore.instance,
+      shopId: doc.id,
+      previousTsaId: null,
+      previousSchedule: null,
+      nextTsaId: tsaId,
+      nextSchedule: schedule,
+      nextTsaName: _resolveDsfName(dsfOptions, tsaId),
+      nextTsaShopData: {
+        'shopId': doc.id,
+        'code': code,
+        'name': name,
+        if (area.isNotEmpty) 'area': area,
+        if (data['location'] is Map) 'location': data['location'],
+        'filer': data['filer'] == true,
+        'discountEnabled': (data['discountEnabled'] as bool?) ?? true,
+        'discountPct': (data['discountPct'] as num?)?.toDouble() ?? 0.0,
+        'assignedDsfId': (data['assignedDsfId'] as String?) ?? '',
+        'assignedDsfUid': (data['assignedDsfUid'] as String?) ?? '',
+        'schedule': schedule,
+        'tsaId': tsaId,
+        'source': 'global_shops',
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+    );
     AppToast.success('Shop added', message: '$code added from existing shops');
   }
 

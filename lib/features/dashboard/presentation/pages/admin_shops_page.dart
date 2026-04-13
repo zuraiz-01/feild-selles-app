@@ -14,6 +14,7 @@ import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
+import '../../../../core/utils/shop_assignment_sync.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 
 class AdminShopsPage extends StatefulWidget {
@@ -391,6 +392,7 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
       existing?['schedule'] as Map?,
       selectCurrentDayIfEmpty: existingId != null,
     );
+    final initialSchedule = Map<String, bool>.from(schedule);
     bool filer = existing?['filer'] == true;
     bool discountEnabled = (existing?['discountEnabled'] as bool?) ?? true;
     final existingDiscountPct = (existing?['discountPct'] as num?)?.toDouble();
@@ -704,11 +706,12 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
                                           (existing?['name'] as String?)
                                               ?.trim() ??
                                           '';
-                                      final confirmed = await _confirmDeleteShop(
-                                        context,
-                                        shopCode: shopCode,
-                                        shopName: shopName,
-                                      );
+                                      final confirmed =
+                                          await _confirmDeleteShop(
+                                            context,
+                                            shopCode: shopCode,
+                                            shopName: shopName,
+                                          );
                                       if (!confirmed) return;
 
                                       setState(() => isDeleting = true);
@@ -798,6 +801,11 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
                                   }
                                   discountPct = parsed / 100;
                                 }
+                                final selectedDsfUid = _resolveSelectedDsfUid(
+                                  dsfOptions,
+                                  selectedDsf,
+                                );
+                                final shopId = existingId ?? code.toLowerCase();
                                 final payload = <String, dynamic>{
                                   'code': code,
                                   'name': nameController.text.trim(),
@@ -806,10 +814,8 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
                                   'discountEnabled': discountEnabled,
                                   'discountPct': discountPct,
                                   'assignedDsfId': selectedDsf ?? '',
-                                  'assignedDsfUid': _resolveSelectedDsfUid(
-                                    dsfOptions,
-                                    selectedDsf,
-                                  ),
+                                  'assignedDsfUid': selectedDsfUid,
+                                  'tsaId': selectedDsf ?? '',
                                   'schedule': schedule,
                                   'updatedAt': FieldValue.serverTimestamp(),
                                 };
@@ -830,8 +836,50 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
                                       FieldValue.serverTimestamp();
                                 }
                                 await shopsCol
-                                    .doc(existingId ?? code.toLowerCase())
+                                    .doc(shopId)
                                     .set(payload, SetOptions(merge: true));
+                                await syncShopTsaAssignment(
+                                  firestore: FirebaseFirestore.instance,
+                                  shopId: shopId,
+                                  previousTsaId: _resolveSelectedDsfId(
+                                    dsfOptions,
+                                    preferredId: existingAssigned,
+                                    preferredUid: existingAssignedUid,
+                                  ),
+                                  previousSchedule: initialSchedule,
+                                  nextTsaId: selectedDsf,
+                                  nextSchedule: schedule,
+                                  nextTsaName: _resolveSelectedDsfName(
+                                    dsfOptions,
+                                    selectedDsf,
+                                  ),
+                                  nextTsaShopData: selectedDsf == null
+                                      ? null
+                                      : {
+                                          'shopId': shopId,
+                                          'code': code,
+                                          'name': nameController.text.trim(),
+                                          'area': areaController.text.trim(),
+                                          'filer': filer,
+                                          'discountEnabled': discountEnabled,
+                                          'discountPct': discountPct,
+                                          'assignedDsfId': selectedDsf,
+                                          'assignedDsfUid': selectedDsfUid,
+                                          'schedule': schedule,
+                                          'tsaId': selectedDsf,
+                                          if (lat != null && lng != null)
+                                            'location': {
+                                              'lat': lat,
+                                              'lng': lng,
+                                            },
+                                          'source': 'admin_form',
+                                          'updatedAt':
+                                              FieldValue.serverTimestamp(),
+                                          if (existingId == null)
+                                            'createdAt':
+                                                FieldValue.serverTimestamp(),
+                                        },
+                                );
                                 if (context.mounted) {
                                   Navigator.of(context).pop();
                                 }
@@ -1081,16 +1129,21 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
     return '';
   }
 
+  String _resolveSelectedDsfName(List<_DsfOption> options, String? selectedId) {
+    final id = selectedId?.trim();
+    if (id == null || id.isEmpty) return '';
+    final match = options.where((o) => o.id == id).toList();
+    if (match.length == 1) return match.single.name;
+    return '';
+  }
+
   Map<String, bool> _buildScheduleState(
     Map? rawSchedule, {
     bool selectCurrentDayIfEmpty = false,
   }) {
-    final schedule = Map<String, bool>.fromEntries(
-      _scheduleDays.map(
-        (day) => MapEntry(day, rawSchedule?[day] == true),
-      ),
-    );
-    if (selectCurrentDayIfEmpty && !schedule.values.any((selected) => selected)) {
+    final schedule = normalizeShopSchedule(rawSchedule);
+    if (selectCurrentDayIfEmpty &&
+        !schedule.values.any((selected) => selected)) {
       schedule[_currentDayKey()] = true;
     }
     return schedule;
@@ -1116,16 +1169,6 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
         return 'mon';
     }
   }
-
-  static const List<String> _scheduleDays = [
-    'mon',
-    'tue',
-    'wed',
-    'thu',
-    'fri',
-    'sat',
-    'sun',
-  ];
 
   Future<Map<String, bool>?> _pickSchedule(
     BuildContext context,

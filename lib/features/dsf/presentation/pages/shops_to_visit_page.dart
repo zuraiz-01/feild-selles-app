@@ -116,6 +116,11 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
     required String dayLabel,
     required String dayKey,
   }) {
+    final tsaShopStream = FirebaseFirestore.instance
+        .collection('seedTsas')
+        .doc(dsfAccountId)
+        .collection('shops')
+        .snapshots();
     final byIdStream = FirebaseFirestore.instance
         .collection('shops')
         .where('assignedDsfId', isEqualTo: dsfAccountId)
@@ -126,99 +131,166 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
         .snapshots();
 
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: byIdStream,
-      builder: (context, byIdSnap) {
-        if (byIdSnap.hasError) {
-          return Center(child: Text(byIdSnap.error.toString()));
+      stream: tsaShopStream,
+      builder: (context, tsaShopSnap) {
+        if (tsaShopSnap.hasError) {
+          return Center(child: Text(tsaShopSnap.error.toString()));
         }
-        if (!byIdSnap.hasData) {
+        if (!tsaShopSnap.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
+        final tsaEntries =
+            {for (final doc in tsaShopSnap.data!.docs) doc.id: doc.data()}
+                .entries
+                .where((e) => _isScheduledForDay(e.value, dayKey))
+                .toList()
+              ..sort((a, b) {
+                final aCode = (a.value['code'] as String?) ?? a.key;
+                final bCode = (b.value['code'] as String?) ?? b.key;
+                return aCode.compareTo(bCode);
+              });
+
+        if (tsaEntries.isNotEmpty) {
+          return ListView.separated(
+            itemCount: tsaEntries.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final shopId = tsaEntries[index].key;
+              final data = tsaEntries[index].value;
+              final code = (data['code'] as String?) ?? shopId;
+              final name = (data['name'] as String?) ?? '';
+              final area = (data['area'] as String?) ?? '';
+              final title = name.isEmpty ? code : '$name ($code)';
+
+              return GlassCard(
+                padding: const EdgeInsets.all(16),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  subtitle: area.isEmpty
+                      ? null
+                      : Text(
+                          area,
+                          style: const TextStyle(color: AppTheme.mutedInk),
+                        ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openShopVisit(
+                    tsaId: _readNonEmptyString(data['tsaId']) ?? dsfAccountId,
+                    shopId: shopId,
+                    shopTitle: name.isEmpty ? code : name,
+                  ),
+                ),
+              );
+            },
+          );
+        }
+
         return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: byUidStream,
-          builder: (context, byUidSnap) {
-            if (byUidSnap.hasError) {
-              return Center(child: Text(byUidSnap.error.toString()));
+          stream: byIdStream,
+          builder: (context, byIdSnap) {
+            if (byIdSnap.hasError) {
+              return Center(child: Text(byIdSnap.error.toString()));
             }
-            if (!byUidSnap.hasData) {
+            if (!byIdSnap.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final merged = <String, Map<String, dynamic>>{};
-            for (final doc in byIdSnap.data!.docs) {
-              merged[doc.id] = doc.data();
-            }
-            for (final doc in byUidSnap.data!.docs) {
-              merged[doc.id] = doc.data();
-            }
+            return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: byUidStream,
+              builder: (context, byUidSnap) {
+                if (byUidSnap.hasError) {
+                  return Center(child: Text(byUidSnap.error.toString()));
+                }
+                if (!byUidSnap.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            final entries =
-                merged.entries
-                    .where((e) => _isScheduledForDay(e.value, dayKey))
-                    .toList()
-                  ..sort((a, b) {
-                    final aCode = (a.value['code'] as String?) ?? a.key;
-                    final bCode = (b.value['code'] as String?) ?? b.key;
-                    return aCode.compareTo(bCode);
-                  });
+                final merged = <String, Map<String, dynamic>>{};
+                for (final doc in byIdSnap.data!.docs) {
+                  merged[doc.id] = doc.data();
+                }
+                for (final doc in byUidSnap.data!.docs) {
+                  merged[doc.id] = doc.data();
+                }
 
-            if (entries.isEmpty) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'No shops assigned for $dayLabel yet.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Expanded(child: Center(child: Text('No shops found.'))),
-                ],
-              );
-            }
+                final entries =
+                    merged.entries
+                        .where((e) => _isScheduledForDay(e.value, dayKey))
+                        .toList()
+                      ..sort((a, b) {
+                        final aCode = (a.value['code'] as String?) ?? a.key;
+                        final bCode = (b.value['code'] as String?) ?? b.key;
+                        return aCode.compareTo(bCode);
+                      });
 
-            return ListView.separated(
-              itemCount: entries.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final shopId = entries[index].key;
-                final data = entries[index].value;
-                final code = (data['code'] as String?) ?? shopId;
-                final name = (data['name'] as String?) ?? '';
-                final area = (data['area'] as String?) ?? '';
-                final title = name.isEmpty ? code : '$name ($code)';
+                if (entries.isEmpty) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'No shops assigned for $dayLabel yet.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      const Expanded(
+                        child: Center(child: Text('No shops found.')),
+                      ),
+                    ],
+                  );
+                }
 
-                return GlassCard(
-                  padding: const EdgeInsets.all(16),
-                  child: ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(
-                      title,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    subtitle: area.isEmpty
-                        ? null
-                        : Text(
-                            area,
-                            style: const TextStyle(color: AppTheme.mutedInk),
-                          ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openShopVisit(
-                      tsaId: _readNonEmptyString(data['tsaId']) ?? dsfAccountId,
-                      shopId: shopId,
-                      shopTitle: name.isEmpty ? code : name,
-                    ),
-                  ),
+                return ListView.separated(
+                  itemCount: entries.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final shopId = entries[index].key;
+                    final data = entries[index].value;
+                    final code = (data['code'] as String?) ?? shopId;
+                    final name = (data['name'] as String?) ?? '';
+                    final area = (data['area'] as String?) ?? '';
+                    final title = name.isEmpty ? code : '$name ($code)';
+
+                    return GlassCard(
+                      padding: const EdgeInsets.all(16),
+                      child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        subtitle: area.isEmpty
+                            ? null
+                            : Text(
+                                area,
+                                style: const TextStyle(
+                                  color: AppTheme.mutedInk,
+                                ),
+                              ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => _openShopVisit(
+                          tsaId:
+                              _readNonEmptyString(data['tsaId']) ??
+                              dsfAccountId,
+                          shopId: shopId,
+                          shopTitle: name.isEmpty ? code : name,
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
             );
