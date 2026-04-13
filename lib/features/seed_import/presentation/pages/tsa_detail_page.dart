@@ -14,10 +14,26 @@ import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
+import '../../../../core/models/user_role.dart';
+import '../../../../core/services/session/session_service.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
+import '../../data/seed_utils.dart';
 
 class TsaDetailPage extends StatelessWidget {
   const TsaDetailPage({super.key});
+
+  String _resolveDashboardRoute() {
+    final profile = Get.find<SessionService>().profile;
+    if (profile == null) return AppRoutes.adminDashboard;
+    switch (profile.role) {
+      case UserRole.admin:
+        return AppRoutes.adminDashboard;
+      case UserRole.distributor:
+        return AppRoutes.distributorDashboard;
+      case UserRole.dsf:
+        return AppRoutes.dsfHome;
+    }
+  }
 
   bool _isImportedShop(Map<String, dynamic> data) {
     return data['importId'] != null || data['importedAt'] != null;
@@ -128,16 +144,32 @@ class TsaDetailPage extends StatelessWidget {
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    final batch = FirebaseFirestore.instance.batch();
+                    final firestore = FirebaseFirestore.instance;
+                    var batch = firestore.batch();
+                    var ops = 0;
+
+                    Future<void> commitIfNeeded() async {
+                      if (ops < 450) return;
+                      await batch.commit();
+                      batch = firestore.batch();
+                      ops = 0;
+                    }
+
                     for (final doc in currentAssignedSnap.docs) {
                       batch.delete(doc.reference);
+                      ops++;
+                      await commitIfNeeded();
                     }
                     for (final id in working) {
                       batch.set(assignmentRoot.doc(id), {
                         'assignedAt': FieldValue.serverTimestamp(),
                       }, SetOptions(merge: true));
+                      ops++;
+                      await commitIfNeeded();
                     }
-                    await batch.commit();
+                    if (ops > 0) {
+                      await batch.commit();
+                    }
                     if (!context.mounted) return;
                     Navigator.of(context).pop(true);
                   },
@@ -535,6 +567,7 @@ class TsaDetailPage extends StatelessWidget {
       'filer': result.filer,
       'discountEnabled': result.discountEnabled,
       'discountPct': result.discountEnabled ? result.discountPct : 0.0,
+      'tsaId': tsaId,
       'assignedDsfId': result.dsfId ?? '',
       'schedule': result.schedule,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -543,7 +576,7 @@ class TsaDetailPage extends StatelessWidget {
     if (result.lat != null && result.lng != null) {
       payload['location'] = {'lat': result.lat, 'lng': result.lng};
     }
-    final shopId = result.code.toLowerCase();
+    final shopId = slugifyId(result.code);
     await shopsCol.doc(shopId).set(payload, SetOptions(merge: true));
 
     // Also add into TSA shops for immediate use.
@@ -763,7 +796,7 @@ class TsaDetailPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          onPressed: () => Get.offAllNamed(_resolveDashboardRoute()),
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back to dashboard',
         ),

@@ -14,6 +14,7 @@ import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/services/session/session_service.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
+import '../../../seed_import/data/seed_utils.dart';
 
 class ShopsToVisitPage extends StatefulWidget {
   const ShopsToVisitPage({super.key});
@@ -25,6 +26,12 @@ class ShopsToVisitPage extends StatefulWidget {
 class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
   String _currentDayKey = '';
   String? _dsfAccountId;
+
+  String? _readNonEmptyString(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
 
   String _dayKeyFromDateKey(String? dateKey) {
     DateTime? parsed;
@@ -207,7 +214,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
                           ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _openShopVisit(
-                      tsaId: '',
+                      tsaId: _readNonEmptyString(data['tsaId']) ?? dsfAccountId,
                       shopId: shopId,
                       shopTitle: name.isEmpty ? code : name,
                     ),
@@ -232,7 +239,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
     if (result == null) return;
 
     final shopsCol = FirebaseFirestore.instance.collection('shops');
-    final shopId = result.code.toLowerCase();
+    final shopId = slugifyId(result.code);
     final now = FieldValue.serverTimestamp();
     final seedTsaRef = FirebaseFirestore.instance
         .collection('seedTsas')
@@ -252,6 +259,7 @@ class _ShopsToVisitPageState extends State<ShopsToVisitPage> {
       'filer': result.filer,
       'discountEnabled': true,
       'discountPct': result.filer ? 0.05 : 0.025,
+      'tsaId': dsfAccountId,
       'assignedDsfId': dsfAccountId,
       'assignedDsfUid': dsfUid,
       'updatedAt': now,

@@ -4,11 +4,26 @@ import 'package:get/get.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_theme.dart';
+import '../../../../core/models/user_role.dart';
+import '../../../../core/services/session/session_service.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../controllers/seed_import_controller.dart';
 
 class SeedImportPage extends GetView<SeedImportController> {
   const SeedImportPage({super.key});
+
+  String _resolveDashboardRoute() {
+    final profile = Get.find<SessionService>().profile;
+    if (profile == null) return AppRoutes.adminDashboard;
+    switch (profile.role) {
+      case UserRole.admin:
+        return AppRoutes.adminDashboard;
+      case UserRole.distributor:
+        return AppRoutes.distributorDashboard;
+      case UserRole.dsf:
+        return AppRoutes.dsfHome;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +31,7 @@ class SeedImportPage extends GetView<SeedImportController> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          onPressed: () => Get.offAllNamed(_resolveDashboardRoute()),
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back to dashboard',
         ),

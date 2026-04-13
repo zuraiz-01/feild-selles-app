@@ -8,12 +8,27 @@ import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
+import '../../../../core/models/user_role.dart';
+import '../../../../core/services/session/session_service.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../data/dsf_account_service.dart';
 import '../../data/seed_utils.dart';
 
 class TsaListPage extends StatelessWidget {
   const TsaListPage({super.key});
+
+  String _resolveDashboardRoute() {
+    final profile = Get.find<SessionService>().profile;
+    if (profile == null) return AppRoutes.adminDashboard;
+    switch (profile.role) {
+      case UserRole.admin:
+        return AppRoutes.adminDashboard;
+      case UserRole.distributor:
+        return AppRoutes.distributorDashboard;
+      case UserRole.dsf:
+        return AppRoutes.dsfHome;
+    }
+  }
 
   Future<void> _createTsa(BuildContext context) async {
     final nameController = TextEditingController();
@@ -252,12 +267,7 @@ class TsaListPage extends StatelessWidget {
 
     final accountService = DsfAccountService(firestore);
     for (final accountRef in dsfAccountRefs) {
-      try {
-        await accountService.deleteAccount(tsaId: accountRef.id);
-      } catch (_) {
-        // Continue cascading cleanup even if auth deletion fails.
-      }
-      await accountRef.delete();
+      await accountService.deleteAccount(tsaId: accountRef.id);
     }
 
     for (final dsfId in dsfIdsToPurge) {
@@ -287,8 +297,8 @@ class TsaListPage extends StatelessWidget {
     await firestore.collection('distributors').doc(tsaId).delete();
   }
 
-  void _goToAdminDashboard() {
-    Get.offAllNamed(AppRoutes.adminDashboard);
+  void _goToDashboard() {
+    Get.offAllNamed(_resolveDashboardRoute());
   }
 
   @override
@@ -300,12 +310,12 @@ class TsaListPage extends StatelessWidget {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        _goToAdminDashboard();
+        _goToDashboard();
       },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
-            onPressed: _goToAdminDashboard,
+            onPressed: _goToDashboard,
             icon: const Icon(Icons.arrow_back),
             tooltip: 'Back to dashboard',
           ),

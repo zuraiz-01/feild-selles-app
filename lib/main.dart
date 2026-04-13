@@ -44,7 +44,6 @@ class MyApp extends StatelessWidget {
               theme: AppTheme.buildLightTheme(),
               darkTheme: AppTheme.buildDarkTheme(),
               themeMode: themeController.themeMode,
-              initialBinding: InitialBinding(),
               debugShowCheckedModeBanner: false,
               home: const Scaffold(
                 body: Center(

@@ -925,12 +925,9 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
         .get();
     refs.addAll(alertsSnap.docs.map((doc) => doc.reference));
 
-    // Visit documents across all duties.
-    final visitsSnap = await firestore
-        .collectionGroup('shopVisits')
-        .where('shopId', isEqualTo: shopId)
-        .get();
-    refs.addAll(visitsSnap.docs.map((doc) => doc.reference));
+    // Visit documents across all duties without requiring a collection-group
+    // index for shopVisits.shopId.
+    refs.addAll(await _findShopVisitRefsWithoutCollectionGroupIndex(shopId));
 
     // Remove from all TSA scopes: shops, sales, and daily assignments.
     final seedTsasSnap = await firestore.collection('seedTsas').get();
@@ -976,6 +973,29 @@ class _AdminShopsPageState extends State<AdminShopsPage> {
     }
 
     return deletedCount;
+  }
+
+  Future<List<DocumentReference<Map<String, dynamic>>>>
+  _findShopVisitRefsWithoutCollectionGroupIndex(String shopId) async {
+    final firestore = FirebaseFirestore.instance;
+    final targetShopId = shopId.trim();
+    if (targetShopId.isEmpty) return const [];
+
+    final refs = <DocumentReference<Map<String, dynamic>>>[];
+    final dutiesSnap = await firestore.collection('duties').get();
+
+    for (final dutyDoc in dutiesSnap.docs) {
+      final visitsSnap = await dutyDoc.reference.collection('shopVisits').get();
+      for (final visitDoc in visitsSnap.docs) {
+        final data = visitDoc.data();
+        final visitShopId = ((data['shopId'] as String?) ?? visitDoc.id).trim();
+        if (visitShopId == targetShopId) {
+          refs.add(visitDoc.reference);
+        }
+      }
+    }
+
+    return refs;
   }
 
   String _formatPercentInput(double rate) {

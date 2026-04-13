@@ -6,11 +6,15 @@
 // tree, read text, and verify that the values of widget properties are correct.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
 
+import 'package:field_sales_app/app/controllers/theme_controller.dart';
 import 'package:field_sales_app/main.dart';
 
 void main() {
   testWidgets('Preview mode renders', (WidgetTester tester) async {
+    Get.testMode = true;
+    Get.put(ThemeController(), permanent: true);
     await tester.pumpWidget(const MyApp(skipFirebase: true));
 
     expect(find.textContaining('Preview mode is enabled'), findsOneWidget);

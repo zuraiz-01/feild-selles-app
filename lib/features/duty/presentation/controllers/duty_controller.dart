@@ -21,11 +21,11 @@ class DutyController extends GetxController {
     error.value = null;
     try {
       await _startDuty();
-      update();
     } catch (e) {
       error.value = e.toString();
     } finally {
       isLoading.value = false;
+      update();
     }
   }
 
@@ -34,11 +34,11 @@ class DutyController extends GetxController {
     error.value = null;
     try {
       await _endDuty(uploadReport: uploadReport);
-      update();
     } catch (e) {
       error.value = e.toString();
     } finally {
       isLoading.value = false;
+      update();
     }
   }
 }

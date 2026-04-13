@@ -11,10 +11,25 @@ import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
+import '../../../../core/models/user_role.dart';
+import '../../../../core/services/session/session_service.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
 class ShopDetailPage extends StatelessWidget {
   const ShopDetailPage({super.key});
+
+  String _resolveDashboardRoute() {
+    final profile = Get.find<SessionService>().profile;
+    if (profile == null) return AppRoutes.adminDashboard;
+    switch (profile.role) {
+      case UserRole.admin:
+        return AppRoutes.adminDashboard;
+      case UserRole.distributor:
+        return AppRoutes.distributorDashboard;
+      case UserRole.dsf:
+        return AppRoutes.dsfHome;
+    }
+  }
 
   DateTime? _toDate(dynamic raw) {
     if (raw is Timestamp) return raw.toDate();
@@ -554,7 +569,7 @@ class ShopDetailPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          onPressed: () => Get.offAllNamed(_resolveDashboardRoute()),
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back to dashboard',
         ),
@@ -599,8 +614,16 @@ class ShopDetailPage extends StatelessWidget {
 
                       final visitTsaId = ((data['tsaId'] as String?) ?? '')
                           .trim();
-                      // Some older/global flows saved shop visits without tsaId.
-                      return visitTsaId == tsaId || visitTsaId.isEmpty;
+                      if (visitTsaId == tsaId) return true;
+
+                      // Backward compatibility for old visits that missed tsaId.
+                      // Keep these only when distributorId matches current tsaId.
+                      if (visitTsaId.isEmpty) {
+                        final distributorId =
+                            ((data['distributorId'] as String?) ?? '').trim();
+                        return distributorId == tsaId;
+                      }
+                      return false;
                     }).toList()..sort((a, b) {
                       final aDate = _toDate(a.data()['submittedAt']);
                       final bDate = _toDate(b.data()['submittedAt']);

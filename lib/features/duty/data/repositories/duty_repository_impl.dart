@@ -91,6 +91,20 @@ class DutyRepositoryImpl implements DutyRepository {
       return null;
     }
 
+    double? sumQuantity(dynamic value) {
+      if (value is! List) return null;
+      var total = 0.0;
+      var found = false;
+      for (final item in value) {
+        if (item is! Map) continue;
+        final quantity = parseDouble(item['quantity']);
+        if (quantity == null) continue;
+        total += quantity;
+        found = true;
+      }
+      return found ? total : null;
+    }
+
     final id = map['id'] as String? ?? '';
     final dutyId = map['dutyId'] as String? ?? '';
     final dsfId = map['dsfId'] as String? ?? '';
@@ -107,6 +121,13 @@ class DutyRepositoryImpl implements DutyRepository {
       submittedLng = parseDouble(submittedLocation['lng']);
     }
 
+    final recovery = map['recovery'];
+    final parsedPayment =
+        parseDouble(map['payment']) ??
+        (recovery is Map ? parseDouble(recovery['amount']) : null);
+    final parsedStock =
+        parseDouble(map['stock']) ?? sumQuantity(map['stockItems']);
+
     return DutyShopVisit(
       id: id,
       dutyId: dutyId,
@@ -115,8 +136,8 @@ class DutyRepositoryImpl implements DutyRepository {
       tsaId: tsaId,
       shopId: shopId,
       shopTitle: shopTitle,
-      stock: parseDouble(map['stock']),
-      payment: parseDouble(map['payment']),
+      stock: parsedStock,
+      payment: parsedPayment,
       distanceMeters: parseDouble(map['distanceMeters']),
       submittedLat: submittedLat,
       submittedLng: submittedLng,

@@ -18,6 +18,8 @@ import '../../../../app/ui/app_shell.dart';
 import '../../../../app/ui/app_toast.dart';
 import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
+import '../../../../core/models/user_role.dart';
+import '../../../../core/services/session/session_service.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 
@@ -509,6 +511,19 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   bool _recentLoaded = false;
 
   DsfAccountService get _service => Get.find<DsfAccountService>();
+
+  String _resolveDashboardRoute() {
+    final profile = Get.find<SessionService>().profile;
+    if (profile == null) return AppRoutes.adminDashboard;
+    switch (profile.role) {
+      case UserRole.admin:
+        return AppRoutes.adminDashboard;
+      case UserRole.distributor:
+        return AppRoutes.distributorDashboard;
+      case UserRole.dsf:
+        return AppRoutes.dsfHome;
+    }
+  }
 
   void _setStateIfMounted(VoidCallback fn) {
     if (!mounted) return;
@@ -1179,7 +1194,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: () => Get.offAllNamed(AppRoutes.adminDashboard),
+          onPressed: () => Get.offAllNamed(_resolveDashboardRoute()),
           icon: const Icon(Icons.arrow_back),
           tooltip: 'Back to dashboard',
         ),

@@ -49,19 +49,24 @@ class EndDutyUseCase {
 
     await _tracking.stop(dutyId: dutyId);
 
-    final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await _buildDailyReport(
-      dutyId: dutyId,
-      distributorId: profile.distributorId,
-      dsfId: profile.uid,
-      dateKey: dateKey,
-      upload: uploadReport,
-    );
-
-    await _notifyIfShopsMissed(profile: profile, dutyId: dutyId);
-
+    // Duty must close even if report generation/upload fails.
     await _session.setActiveDutyId(null);
     await _session.setActiveDutyDateKey(null);
+
+    final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    try {
+      await _buildDailyReport(
+        dutyId: dutyId,
+        distributorId: profile.distributorId,
+        dsfId: profile.uid,
+        dateKey: dateKey,
+        upload: uploadReport,
+      );
+    } catch (_) {
+      // Non-blocking: report issues should not keep duty active.
+    }
+
+    await _notifyIfShopsMissed(profile: profile, dutyId: dutyId);
   }
 
   Future<void> _notifyIfShopsMissed({

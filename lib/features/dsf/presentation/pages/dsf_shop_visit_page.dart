@@ -22,6 +22,9 @@ class DsfShopVisitPage extends StatefulWidget {
 }
 
 class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
+  static const double _maxReliableAccuracyMeters = 40;
+  static const double _maxAccuracyCompensationMeters = 20;
+
   Duration _minVisitDuration = const Duration(minutes: 5);
   double? _requiredDistanceMeters;
 
@@ -37,6 +40,9 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   Timer? _ticker;
 
   Position? _position;
+  double? _lastReliableDistanceMeters;
+  double? _lastRawDistanceMeters;
+  double? _lastAccuracyMeters;
   DateTime? _visitStartedAt;
   String? _error;
   bool _isSaving = false;
@@ -71,6 +77,53 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     if (value is num) return value.toInt();
     if (value is String) return int.tryParse(value.trim());
     return null;
+  }
+
+  String? _readNonEmptyString(dynamic value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  double? _readAccuracyMeters(Position? position) {
+    if (position == null) return null;
+    final accuracy = position.accuracy;
+    if (!accuracy.isFinite || accuracy <= 0) return null;
+    return accuracy;
+  }
+
+  bool _isReliablePosition(Position? position) {
+    final accuracy = _readAccuracyMeters(position);
+    if (accuracy == null) return false;
+    return accuracy <= _maxReliableAccuracyMeters;
+  }
+
+  double _adjustDistanceForAccuracy({
+    required double rawDistanceMeters,
+    required Position position,
+  }) {
+    final accuracy = _readAccuracyMeters(position) ?? 0;
+    final compensation = accuracy.clamp(0, _maxAccuracyCompensationMeters);
+    final adjusted = rawDistanceMeters - compensation;
+    return adjusted < 0 ? 0 : adjusted;
+  }
+
+  double _sumStockQuantity(List<Map<String, dynamic>> items) {
+    var total = 0.0;
+    for (final item in items) {
+      final raw = item['quantity'];
+      if (raw is num) {
+        total += raw.toDouble();
+        continue;
+      }
+      if (raw is String) {
+        final parsed = double.tryParse(raw.trim());
+        if (parsed != null) {
+          total += parsed;
+        }
+      }
+    }
+    return total;
   }
 
   Future<DocumentSnapshot<Map<String, dynamic>>?> _resolveDsfAccountDoc(
@@ -136,9 +189,13 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       _posSub = Geolocator.getPositionStream(locationSettings: settings).listen(
         (pos) {
           if (!mounted) return;
+          final accuracy = _readAccuracyMeters(pos);
           setState(() {
             _position = pos;
-            _error = null;
+            _lastAccuracyMeters = accuracy;
+            _error = _isReliablePosition(pos)
+                ? null
+                : 'GPS signal is weak. Holding the last reliable shop distance.';
           });
         },
         onError: (_) =>
@@ -147,7 +204,13 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       final initial = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      _setStateSafe(() => _position = initial);
+      _setStateSafe(() {
+        _position = initial;
+        _lastAccuracyMeters = _readAccuracyMeters(initial);
+        _error = _isReliablePosition(initial)
+            ? null
+            : 'GPS signal is weak. Holding the last reliable shop distance.';
+      });
     } catch (_) {
       _setStateSafe(() => _error = 'Unable to access location.');
     }
@@ -203,7 +266,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     return visitData['submittedAt'] != null;
   }
 
-  double? _distanceToShopMeters(Map<String, dynamic>? shopData) {
+  double? _rawDistanceToShopMeters(Map<String, dynamic>? shopData) {
     final pos = _position;
     if (pos == null) return null;
     if (shopData == null) return null;
@@ -218,6 +281,24 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       lat.toDouble(),
       lng.toDouble(),
     );
+  }
+
+  double? _distanceToShopMeters(Map<String, dynamic>? shopData) {
+    final pos = _position;
+    final rawDistanceMeters = _rawDistanceToShopMeters(shopData);
+    if (rawDistanceMeters == null || pos == null) return _lastReliableDistanceMeters;
+
+    _lastRawDistanceMeters = rawDistanceMeters;
+    if (!_isReliablePosition(pos)) {
+      return _lastReliableDistanceMeters;
+    }
+
+    final adjustedDistance = _adjustDistanceForAccuracy(
+      rawDistanceMeters: rawDistanceMeters,
+      position: pos,
+    );
+    _lastReliableDistanceMeters = adjustedDistance;
+    return adjustedDistance;
   }
 
   bool _isInside(double? distanceMeters) {
@@ -397,6 +478,8 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
 
     setState(() => _isSaving = true);
     try {
+      final normalizedTsaId = tsaId.trim();
+      final stockTotal = _sumStockQuantity(_stockItems);
       final pos = _position;
       final now = FieldValue.serverTimestamp();
       final ref = FirebaseFirestore.instance
@@ -406,8 +489,11 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
           .doc(shopId);
       String? chequeUrl;
       if (_paymentType == 'cheque' && _chequeImage != null) {
+        final storageTsaId = normalizedTsaId.isEmpty
+            ? 'unassigned'
+            : normalizedTsaId;
         final uploadRef = FirebaseStorage.instance.ref().child(
-          'cheques/$tsaId/$shopId/$dutyId.jpg',
+          'cheques/$storageTsaId/$shopId/$dutyId.jpg',
         );
         await uploadRef.putData(await _chequeImage!.readAsBytes());
         chequeUrl = await uploadRef.getDownloadURL();
@@ -416,11 +502,14 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         'dutyId': dutyId,
         'dsfId': dsfId,
         'distributorId': distributorId,
-        'tsaId': tsaId,
+        if (normalizedTsaId.isNotEmpty) 'tsaId': normalizedTsaId,
         'shopId': shopId,
         'shopTitle': shopTitle,
         'orders': _orders,
         'stockItems': _stockItems,
+        // Keep legacy report readers working.
+        'stock': stockTotal,
+        'payment': amount,
         'recovery': {
           'type': _paymentType,
           'amount': amount,
@@ -521,6 +610,15 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                 ? '${(discountPct * 100).toStringAsFixed(1)}% discount'
                 : 'Discount disabled';
             final distanceMeters = _distanceToShopMeters(shopData);
+            final rawDistanceMeters = _lastRawDistanceMeters;
+            final accuracyMeters = _lastAccuracyMeters;
+            final locationReliable = _isReliablePosition(_position);
+            final resolvedTsaId =
+                _readNonEmptyString(tsaId) ??
+                _readNonEmptyString(shopData?['tsaId']) ??
+                _readNonEmptyString(shopData?['assignedDsfId']) ??
+                _readNonEmptyString(shopData?['assignedDsfUid']) ??
+                '';
 
             return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
               stream: visitRef.snapshots(),
@@ -601,6 +699,18 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                                   : 'Distance: ${distanceMeters?.toStringAsFixed(0) ?? '--'} m',
                               style: const TextStyle(color: AppTheme.mutedInk),
                             ),
+                            if (_position != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                locationReliable
+                                    ? 'GPS accuracy ±${accuracyMeters?.toStringAsFixed(0) ?? '--'} m'
+                                    : 'GPS weak${accuracyMeters != null ? ' (±${accuracyMeters.toStringAsFixed(0)} m)' : ''}. Using last stable distance${rawDistanceMeters != null ? ', raw ${rawDistanceMeters.toStringAsFixed(0)} m' : ''}.',
+                                style: const TextStyle(
+                                  color: AppTheme.mutedInk,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 6),
                             Row(
                               children: [
@@ -733,7 +843,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                                           dutyId: dutyId,
                                           dsfId: profile.uid,
                                           distributorId: profile.distributorId,
-                                          tsaId: tsaId,
+                                          tsaId: resolvedTsaId,
                                           shopId: shopId,
                                           shopTitle: shopTitle,
                                           distanceMeters: distanceMeters,
