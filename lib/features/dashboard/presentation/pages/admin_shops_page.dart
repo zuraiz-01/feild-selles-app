@@ -16,8 +16,55 @@ import '../../../../app/ui/app_theme.dart';
 import '../../../../app/ui/theme_mode_toggle_button.dart';
 import '../../../../core/utils/map_location_url_parser.dart';
 
-class AdminShopsPage extends StatelessWidget {
+class AdminShopsPage extends StatefulWidget {
   const AdminShopsPage({super.key});
+
+  @override
+  State<AdminShopsPage> createState() => _AdminShopsPageState();
+}
+
+class _AdminShopsPageState extends State<AdminShopsPage> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_handleSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController
+      ..removeListener(_handleSearchChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _handleSearchChanged() {
+    final nextQuery = _searchController.text.trim().toLowerCase();
+    if (nextQuery == _searchQuery) return;
+    setState(() {
+      _searchQuery = nextQuery;
+    });
+  }
+
+  bool _matchesShopQuery(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc,
+    String query,
+  ) {
+    if (query.isEmpty) return true;
+    final data = doc.data();
+    final fields = [
+      doc.id,
+      data['code'] as String? ?? '',
+      data['name'] as String? ?? '',
+      data['area'] as String? ?? '',
+      data['assignedDsfId'] as String? ?? '',
+      data['assignedDsfUid'] as String? ?? '',
+    ];
+    return fields.any((value) => value.toLowerCase().contains(query));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,11 +129,14 @@ class AdminShopsPage extends StatelessWidget {
             if (docs.isEmpty) {
               return const Center(child: Text('No shops yet. Add your first.'));
             }
+            final filteredDocs = docs
+                .where((doc) => _matchesShopQuery(doc, _searchQuery))
+                .toList();
             final list = ListView.separated(
-              itemCount: docs.length,
+              itemCount: filteredDocs.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
-                final doc = docs[index];
+                final doc = filteredDocs[index];
                 final data = doc.data();
                 final code = (data['code'] as String?) ?? doc.id;
                 final name = (data['name'] as String?) ?? '';
@@ -195,7 +245,26 @@ class AdminShopsPage extends StatelessWidget {
               },
             );
 
-            if (!kIsWeb) return list;
+            final content = filteredDocs.isEmpty
+                ? Center(
+                    child: Text(
+                      _searchQuery.isEmpty
+                          ? 'No shops yet. Add your first.'
+                          : 'No shop found for "${_searchController.text.trim()}".',
+                    ),
+                  )
+                : list;
+
+            if (!kIsWeb) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildSearchBar(),
+                  const SizedBox(height: 12),
+                  Expanded(child: content),
+                ],
+              );
+            }
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -230,7 +299,9 @@ class AdminShopsPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${docs.length} shops in network',
+                              _searchQuery.isEmpty
+                                  ? '${docs.length} shops in network'
+                                  : '${filteredDocs.length} of ${docs.length} shops',
                               style: const TextStyle(
                                 color: AppTheme.mutedInk,
                                 fontSize: 12,
@@ -248,10 +319,36 @@ class AdminShopsPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Expanded(child: list),
+                _buildSearchBar(),
+                const SizedBox(height: 12),
+                Expanded(child: content),
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    final hasValue = _searchController.text.trim().isNotEmpty;
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      child: TextField(
+        controller: _searchController,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search shop by code, name, area, or DSF',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: hasValue
+              ? IconButton(
+                  tooltip: 'Clear search',
+                  onPressed: _searchController.clear,
+                  icon: const Icon(Icons.clear),
+                )
+              : null,
+          border: InputBorder.none,
+          isDense: true,
         ),
       ),
     );
@@ -290,16 +387,9 @@ class AdminShopsPage extends StatelessWidget {
       preferredId: existingAssigned,
       preferredUid: existingAssignedUid,
     );
-    var schedule = Map<String, bool>.fromEntries(
-      const [
-        'mon',
-        'tue',
-        'wed',
-        'thu',
-        'fri',
-        'sat',
-        'sun',
-      ].map((d) => MapEntry(d, (existing?['schedule'] as Map?)?[d] == true)),
+    var schedule = _buildScheduleState(
+      existing?['schedule'] as Map?,
+      selectCurrentDayIfEmpty: existingId != null,
     );
     bool filer = existing?['filer'] == true;
     bool discountEnabled = (existing?['discountEnabled'] as bool?) ?? true;
@@ -595,79 +685,81 @@ class AdminShopsPage extends StatelessWidget {
               actions: [
                 SizedBox(
                   width: double.infinity,
-                  child: Row(
-                    children: [
-                      if (existingId != null)
-                        OutlinedButton.icon(
-                          onPressed: isDeleting
-                              ? null
-                              : () async {
-                                  final shopCode =
-                                      (existing?['code'] as String?)
-                                              ?.trim()
-                                              .isNotEmpty ==
-                                          true
-                                      ? (existing?['code'] as String).trim()
-                                      : existingId;
-                                  final shopName =
-                                      (existing?['name'] as String?)?.trim() ??
-                                      '';
-                                  final confirmed = await _confirmDeleteShop(
-                                    context,
-                                    shopCode: shopCode,
-                                    shopName: shopName,
-                                  );
-                                  if (!confirmed) return;
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final deleteButton = existingId == null
+                          ? null
+                          : OutlinedButton.icon(
+                              onPressed: isDeleting
+                                  ? null
+                                  : () async {
+                                      final shopCode =
+                                          (existing?['code'] as String?)
+                                                  ?.trim()
+                                                  .isNotEmpty ==
+                                              true
+                                          ? (existing?['code'] as String).trim()
+                                          : existingId;
+                                      final shopName =
+                                          (existing?['name'] as String?)
+                                              ?.trim() ??
+                                          '';
+                                      final confirmed = await _confirmDeleteShop(
+                                        context,
+                                        shopCode: shopCode,
+                                        shopName: shopName,
+                                      );
+                                      if (!confirmed) return;
 
-                                  setState(() => isDeleting = true);
-                                  try {
-                                    final deletedCount =
-                                        await _deleteShopEverywhere(
-                                          shopId: existingId,
+                                      setState(() => isDeleting = true);
+                                      try {
+                                        final deletedCount =
+                                            await _deleteShopEverywhere(
+                                              shopId: existingId,
+                                            );
+                                        if (context.mounted) {
+                                          Navigator.of(context).pop();
+                                        }
+                                        AppToast.success(
+                                          'Deleted',
+                                          message:
+                                              'Shop $shopCode removed ($deletedCount records).',
                                         );
-                                    if (context.mounted) {
-                                      Navigator.of(context).pop();
-                                    }
-                                    AppToast.success(
-                                      'Deleted',
-                                      message:
-                                          'Shop $shopCode removed ($deletedCount records).',
-                                    );
-                                  } catch (e) {
-                                    AppToast.error(
-                                      'Delete failed',
-                                      message: e.toString(),
-                                    );
-                                  } finally {
-                                    if (context.mounted) {
-                                      setState(() => isDeleting = false);
-                                    }
-                                  }
-                                },
-                          icon: isDeleting
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.delete_outline),
-                          label: const Text('Delete'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.redAccent),
-                          ),
-                        ),
-                      const Spacer(),
-                      TextButton(
+                                      } catch (e) {
+                                        AppToast.error(
+                                          'Delete failed',
+                                          message: e.toString(),
+                                        );
+                                      } finally {
+                                        if (context.mounted) {
+                                          setState(() => isDeleting = false);
+                                        }
+                                      }
+                                    },
+                              icon: isDeleting
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.delete_outline),
+                              label: const Text('Delete'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.redAccent),
+                              ),
+                            );
+
+                      final cancelButton = TextButton(
                         onPressed: isDeleting
                             ? null
                             : () => Navigator.of(context).pop(),
                         child: const Text('Cancel'),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
+                      );
+
+                      final saveButton = ElevatedButton(
                         onPressed: isDeleting
                             ? null
                             : () async {
@@ -749,8 +841,31 @@ class AdminShopsPage extends StatelessWidget {
                                 );
                               },
                         child: const Text('Save'),
-                      ),
-                    ],
+                      );
+
+                      if (constraints.maxWidth < 320) {
+                        return Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (deleteButton != null) deleteButton,
+                            cancelButton,
+                            saveButton,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          if (deleteButton != null) deleteButton,
+                          const Spacer(),
+                          cancelButton,
+                          const SizedBox(width: 8),
+                          saveButton,
+                        ],
+                      );
+                    },
                   ),
                 ),
               ],
@@ -945,6 +1060,52 @@ class AdminShopsPage extends StatelessWidget {
     if (match.length == 1) return match.single.uid;
     return '';
   }
+
+  Map<String, bool> _buildScheduleState(
+    Map? rawSchedule, {
+    bool selectCurrentDayIfEmpty = false,
+  }) {
+    final schedule = Map<String, bool>.fromEntries(
+      _scheduleDays.map(
+        (day) => MapEntry(day, rawSchedule?[day] == true),
+      ),
+    );
+    if (selectCurrentDayIfEmpty && !schedule.values.any((selected) => selected)) {
+      schedule[_currentDayKey()] = true;
+    }
+    return schedule;
+  }
+
+  String _currentDayKey() {
+    switch (DateTime.now().weekday) {
+      case DateTime.monday:
+        return 'mon';
+      case DateTime.tuesday:
+        return 'tue';
+      case DateTime.wednesday:
+        return 'wed';
+      case DateTime.thursday:
+        return 'thu';
+      case DateTime.friday:
+        return 'fri';
+      case DateTime.saturday:
+        return 'sat';
+      case DateTime.sunday:
+        return 'sun';
+      default:
+        return 'mon';
+    }
+  }
+
+  static const List<String> _scheduleDays = [
+    'mon',
+    'tue',
+    'wed',
+    'thu',
+    'fri',
+    'sat',
+    'sun',
+  ];
 
   Future<Map<String, bool>?> _pickSchedule(
     BuildContext context,
