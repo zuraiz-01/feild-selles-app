@@ -286,7 +286,9 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
   double? _distanceToShopMeters(Map<String, dynamic>? shopData) {
     final pos = _position;
     final rawDistanceMeters = _rawDistanceToShopMeters(shopData);
-    if (rawDistanceMeters == null || pos == null) return _lastReliableDistanceMeters;
+    if (rawDistanceMeters == null || pos == null) {
+      return _lastReliableDistanceMeters;
+    }
 
     _lastRawDistanceMeters = rawDistanceMeters;
     if (!_isReliablePosition(pos)) {
@@ -301,16 +303,34 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     return adjustedDistance;
   }
 
+  double? _liveReliableDistanceToShopMeters(Map<String, dynamic>? shopData) {
+    final pos = _position;
+    final rawDistanceMeters = _rawDistanceToShopMeters(shopData);
+    if (rawDistanceMeters == null || pos == null) return null;
+    if (!_isReliablePosition(pos)) return null;
+
+    return _adjustDistanceForAccuracy(
+      rawDistanceMeters: rawDistanceMeters,
+      position: pos,
+    );
+  }
+
   bool _isInside(double? distanceMeters) {
     if (distanceMeters == null) return false;
     final req = _requiredDistanceMeters ?? 120;
     return distanceMeters <= req;
   }
 
-  void _maybeStartTimer(double? distanceMeters) {
-    if (_visitStartedAt != null) return;
-    if (!_isInside(distanceMeters)) return;
-    _visitStartedAt = DateTime.now();
+  void _syncVisitTimer({
+    required bool alreadySubmitted,
+    required double? liveReliableDistanceMeters,
+  }) {
+    if (alreadySubmitted) return;
+    if (_isInside(liveReliableDistanceMeters)) {
+      _visitStartedAt ??= DateTime.now();
+      return;
+    }
+    _visitStartedAt = null;
   }
 
   Future<void> _openOrderPage() async {
@@ -440,6 +460,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
     required String tsaId,
     required String shopId,
     required String shopTitle,
+    required Map<String, dynamic>? shopData,
     required double? distanceMeters,
     required bool filer,
     required double discountPct,
@@ -468,10 +489,13 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       );
       return;
     }
-    if (!_isInside(distanceMeters)) {
+    final liveReliableDistanceMeters = _liveReliableDistanceToShopMeters(
+      shopData,
+    );
+    if (!_isInside(liveReliableDistanceMeters)) {
       AppToast.warning(
         'Not at shop',
-        message: 'Move closer to the shop to submit.',
+        message: 'Reliable GPS lock at the shop is required to submit.',
       );
       return;
     }
@@ -481,6 +505,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
       final normalizedTsaId = tsaId.trim();
       final stockTotal = _sumStockQuantity(_stockItems);
       final pos = _position;
+      final distanceToPersist = liveReliableDistanceMeters ?? distanceMeters;
       final now = FieldValue.serverTimestamp();
       final ref = FirebaseFirestore.instance
           .collection('duties')
@@ -520,7 +545,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
         'submittedAt': now,
         'filer': filer,
         'discountPct': discountPct,
-        if (distanceMeters != null) 'distanceMeters': distanceMeters,
+        if (distanceToPersist != null) 'distanceMeters': distanceToPersist,
         if (pos != null)
           'submittedLocation': {'lat': pos.latitude, 'lng': pos.longitude},
       }, SetOptions(merge: true));
@@ -532,7 +557,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
           'distributorId': distributorId,
           'shopId': shopId,
           'shopTitle': shopTitle,
-          if (distanceMeters != null) 'distanceMeters': distanceMeters,
+          if (distanceToPersist != null) 'distanceMeters': distanceToPersist,
           if (pos != null) 'lat': pos.latitude,
           if (pos != null) 'lng': pos.longitude,
           'createdAt': FieldValue.serverTimestamp(),
@@ -610,6 +635,10 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                 ? '${(discountPct * 100).toStringAsFixed(1)}% discount'
                 : 'Discount disabled';
             final distanceMeters = _distanceToShopMeters(shopData);
+            final liveReliableDistanceMeters = _liveReliableDistanceToShopMeters(
+              shopData,
+            );
+            final insideWithReliableGps = _isInside(liveReliableDistanceMeters);
             final rawDistanceMeters = _lastRawDistanceMeters;
             final accuracyMeters = _lastAccuracyMeters;
             final locationReliable = _isReliablePosition(_position);
@@ -629,20 +658,25 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                 final visitData = visitSnapshot.data?.data();
                 final alreadySubmitted = _isVisitSubmitted(visitData);
                 final submittedAt = _readDate(visitData?['submittedAt']);
-                if (!alreadySubmitted) {
-                  _maybeStartTimer(distanceMeters);
-                }
+                _syncVisitTimer(
+                  alreadySubmitted: alreadySubmitted,
+                  liveReliableDistanceMeters: liveReliableDistanceMeters,
+                );
 
                 final hasLocation = shopData?['location'] is Map;
                 final actionsEnabled =
                     !alreadySubmitted &&
+                    hasLocation &&
+                    locationReliable &&
+                    insideWithReliableGps &&
                     _elapsed() >= _minVisitDuration &&
                     !_isSaving;
                 final canSubmit =
                     !alreadySubmitted &&
                     hasLocation &&
+                    locationReliable &&
                     _elapsed() >= _minVisitDuration &&
-                    _isInside(distanceMeters) &&
+                    insideWithReliableGps &&
                     !_isSaving;
 
                 return Column(
@@ -720,17 +754,17 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: _isInside(distanceMeters)
+                                    color: insideWithReliableGps
                                         ? AppTheme.accentSoft
                                         : AppTheme.warmSoft,
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: Text(
-                                    _isInside(distanceMeters)
+                                    insideWithReliableGps
                                         ? 'At shop'
                                         : 'Move closer',
                                     style: TextStyle(
-                                      color: _isInside(distanceMeters)
+                                      color: insideWithReliableGps
                                           ? AppTheme.ink
                                           : AppTheme.ink,
                                       fontWeight: FontWeight.w600,
@@ -846,6 +880,7 @@ class _DsfShopVisitPageState extends State<DsfShopVisitPage> {
                                           tsaId: resolvedTsaId,
                                           shopId: shopId,
                                           shopTitle: shopTitle,
+                                          shopData: shopData,
                                           distanceMeters: distanceMeters,
                                           filer: filer,
                                           discountPct: discountPct,

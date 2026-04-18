@@ -41,34 +41,42 @@ class BackgroundTrackingService {
     }
 
     _geofence = await _loadGeofence(uid: profile.uid);
-    _running = true;
+    StreamSubscription<Position>? sub;
+    try {
+      final pos = await _locationService.getCurrentPosition();
+      await _handlePoint(
+        dutyId: dutyId,
+        dsfId: profile.uid,
+        distributorId: profile.distributorId,
+        lat: pos.latitude,
+        lng: pos.longitude,
+        recordedAtUtc: DateTime.now().toUtc(),
+      );
 
-    _sub =
-        Geolocator.getPositionStream(
-          locationSettings: const LocationSettings(
-            accuracy: LocationAccuracy.high,
-            distanceFilter: 25,
-          ),
-        ).listen((pos) {
-          _handlePoint(
-            dutyId: dutyId,
-            dsfId: profile.uid,
-            distributorId: profile.distributorId,
-            lat: pos.latitude,
-            lng: pos.longitude,
-            recordedAtUtc: DateTime.now().toUtc(),
-          );
-        });
+      sub = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 25,
+        ),
+      ).listen((pos) {
+        _handlePoint(
+          dutyId: dutyId,
+          dsfId: profile.uid,
+          distributorId: profile.distributorId,
+          lat: pos.latitude,
+          lng: pos.longitude,
+          recordedAtUtc: DateTime.now().toUtc(),
+        );
+      });
 
-    final pos = await _locationService.getCurrentPosition();
-    await _handlePoint(
-      dutyId: dutyId,
-      dsfId: profile.uid,
-      distributorId: profile.distributorId,
-      lat: pos.latitude,
-      lng: pos.longitude,
-      recordedAtUtc: DateTime.now().toUtc(),
-    );
+      _sub = sub;
+      _running = true;
+    } catch (_) {
+      await sub?.cancel();
+      _sub = null;
+      _running = false;
+      rethrow;
+    }
   }
 
   Future<void> stop({required String dutyId}) async {

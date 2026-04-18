@@ -13,6 +13,7 @@ abstract class DutyRepository {
     required String dutyId,
     required double endLat,
     required double endLng,
+    bool logAlert = true,
   });
 
   Future<DutySession> getDuty(String dutyId);

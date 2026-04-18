@@ -498,7 +498,6 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
   bool _isPhotoUploading = false;
   String? _status;
   DsfAccount? _lastAccount;
-  bool _showCredentialPassword = false;
   bool _showFormPassword = false;
   String? _photoUrl;
   Uint8List? _localPhotoBytes;
@@ -912,7 +911,6 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     _editSnapshot = {
       'name': _name.text,
       'email': _email.text,
-      'password': _password.text,
       'distributorId': _distributorId.text,
       'photoUrl': _photoUrl ?? _lastAccount?.photoUrl ?? '',
       'removePhotoOnSave': _removePhotoOnSave ? '1' : '0',
@@ -929,7 +927,6 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
     if (snap == null) return;
     _name.text = snap['name'] ?? '';
     _email.text = snap['email'] ?? '';
-    _password.text = snap['password'] ?? '';
     _distributorId.text = snap['distributorId'] ?? '';
     _photoUrl = (snap['photoUrl'] ?? '').trim().isEmpty
         ? null
@@ -972,7 +969,6 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
           _lastAccount == null ||
           _lastAccount!.uid != account.uid ||
           _lastAccount!.email != account.email ||
-          _lastAccount!.password != account.password ||
           _lastAccount!.name != account.name ||
           _lastAccount!.distributorId != account.distributorId ||
           _lastAccount!.photoUrl != account.photoUrl ||
@@ -980,9 +976,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       if (hasChanged && !_isEditMode) {
         _name.text = account.name.isEmpty ? tsaName : account.name;
         _email.text = account.email;
-        if (account.password.isNotEmpty || _password.text.trim().isEmpty) {
-          _password.text = account.password;
-        }
+        _password.text = '';
         _distributorId.text = account.distributorId.isEmpty
             ? tsaId
             : account.distributorId;
@@ -1041,6 +1035,12 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       });
       return;
     }
+    if (_password.text.trim().isEmpty) {
+      setState(() {
+        _status = 'Initial password is required.';
+      });
+      return;
+    }
     setState(() {
       _isWorking = true;
       _status = null;
@@ -1067,6 +1067,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       _status = 'Create failed: $e';
       AppToast.error('Create failed', message: '$e');
     } finally {
+      _password.clear();
       if (mounted) {
         setState(() => _isWorking = false);
       }
@@ -1082,16 +1083,9 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       final officeLat = double.tryParse(_officeLat.text.trim());
       final officeLng = double.tryParse(_officeLng.text.trim());
       final officeRadius = double.tryParse(_officeRadius.text.trim());
-      final password = _password.text.trim();
       if (officeLat == null || officeLng == null || officeRadius == null) {
         setState(() {
           _status = 'Office geofence (lat/lng/radius) is required.';
-        });
-        return;
-      }
-      if (password.isEmpty) {
-        setState(() {
-          _status = 'Password is required.';
         });
         return;
       }
@@ -1107,7 +1101,6 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
         tsaId: tsaId,
         name: _name.text,
         email: _email.text,
-        password: password,
         distributorId: _distributorId.text,
         photoUrl: _photoUrl,
         clearPhoto: _removePhotoOnSave,
@@ -1125,6 +1118,7 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
       _status = 'Update failed: $e';
       AppToast.error('Update failed', message: '$e');
     } finally {
+      _password.clear();
       if (mounted) {
         setState(() => _isWorking = false);
       }
@@ -1359,32 +1353,11 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                             'Email: ${account?.email ?? _email.text}',
                           ),
                           const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: SelectableText(
-                                  _showCredentialPassword
-                                      ? 'Password: ${account?.password ?? _password.text}'
-                                      : 'Password: ••••••••',
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _showCredentialPassword =
-                                        !_showCredentialPassword;
-                                  });
-                                },
-                                icon: Icon(
-                                  _showCredentialPassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                ),
-                                tooltip: _showCredentialPassword
-                                    ? 'Hide password'
-                                    : 'Show password',
-                              ),
-                            ],
+                          Text(
+                            account == null
+                                ? 'Set the initial password before create. It will not be stored in Firestore.'
+                                : 'Password is not stored and cannot be viewed here.',
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
                         ],
                       ),
@@ -1407,38 +1380,53 @@ class _TsaAccountPageState extends State<TsaAccountPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _email,
-                        readOnly: !isEditable,
+                        readOnly: !isEditable || account != null,
                         keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Email',
-                          prefixIcon: Icon(Icons.alternate_email),
+                          prefixIcon: const Icon(Icons.alternate_email),
+                          helperText: account == null
+                              ? null
+                              : 'Auth email changes require Firebase Console or a trusted admin function.',
                         ),
                       ),
                       const SizedBox(height: 8),
-                      TextField(
-                        controller: _password,
-                        readOnly: !isEditable,
-                        obscureText: !_showFormPassword,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _showFormPassword = !_showFormPassword;
-                              });
-                            },
-                            icon: Icon(
-                              _showFormPassword
-                                  ? Icons.visibility_off
-                                  : Icons.visibility,
+                      if (account == null)
+                        TextField(
+                          controller: _password,
+                          readOnly: !isEditable,
+                          obscureText: !_showFormPassword,
+                          decoration: InputDecoration(
+                            labelText: 'Initial password',
+                            helperText:
+                                'Choose it now. It will not be stored or shown again here.',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _showFormPassword = !_showFormPassword;
+                                });
+                              },
+                              icon: Icon(
+                                _showFormPassword
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              tooltip: _showFormPassword
+                                  ? 'Hide password'
+                                  : 'Show password',
                             ),
-                            tooltip: _showFormPassword
-                                ? 'Hide password'
-                                : 'Show password',
+                          ),
+                        )
+                      else
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.lock_outline),
+                          title: Text('Password'),
+                          subtitle: Text(
+                            'Stored passwords were removed. Rotate credentials from a trusted backend or Firebase Console.',
                           ),
                         ),
-                      ),
                       const SizedBox(height: 8),
                       TextField(
                         controller: _distributorId,

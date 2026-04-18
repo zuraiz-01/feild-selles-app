@@ -38,6 +38,10 @@ class EndDutyUseCase {
     if (dutyId == null) {
       throw StateError('No active duty');
     }
+    final dutyDateKey =
+        (_session.activeDutyDateKey?.trim().isNotEmpty ?? false)
+        ? _session.activeDutyDateKey!.trim()
+        : DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     final pos = await _location.getCurrentPosition();
 
@@ -47,40 +51,51 @@ class EndDutyUseCase {
       endLng: pos.longitude,
     );
 
-    await _tracking.stop(dutyId: dutyId);
+    Object? trackingError;
+    try {
+      await _tracking.stop(dutyId: dutyId);
+    } catch (e) {
+      trackingError = e;
+    }
 
     // Duty must close even if report generation/upload fails.
     await _session.setActiveDutyId(null);
     await _session.setActiveDutyDateKey(null);
 
-    final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
     try {
       await _buildDailyReport(
         dutyId: dutyId,
         distributorId: profile.distributorId,
         dsfId: profile.uid,
-        dateKey: dateKey,
+        dateKey: dutyDateKey,
         upload: uploadReport,
       );
     } catch (_) {
       // Non-blocking: report issues should not keep duty active.
     }
 
-    await _notifyIfShopsMissed(profile: profile, dutyId: dutyId);
+    await _notifyIfShopsMissed(
+      profile: profile,
+      dutyId: dutyId,
+      dutyDateKey: dutyDateKey,
+    );
+
+    if (trackingError != null) {
+      throw StateError(
+        'Duty ended, but tracking cleanup failed: $trackingError',
+      );
+    }
   }
 
   Future<void> _notifyIfShopsMissed({
     required SessionUserProfile profile,
     required String dutyId,
+    required String dutyDateKey,
   }) async {
     try {
       final dsfAccountId = await _resolveDsfAccountId(profile.uid);
       if (dsfAccountId == null || dsfAccountId.trim().isEmpty) return;
 
-      final dutyDateKey =
-          (_session.activeDutyDateKey?.trim().isNotEmpty ?? false)
-          ? _session.activeDutyDateKey!.trim()
-          : DateFormat('yyyy-MM-dd').format(DateTime.now());
       final assignmentDayKey = _weekdayKeyFromDateKey(dutyDateKey);
 
       final assignedShopIds = await _loadAssignedShopIds(

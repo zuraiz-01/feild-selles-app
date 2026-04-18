@@ -39,12 +39,14 @@ class DutyRemoteDataSource {
     required String dutyId,
     required double endLat,
     required double endLng,
+    bool logAlert = true,
   }) async {
     await _firestore.collection('duties').doc(dutyId).update({
       'status': 'ended',
       'endAt': FieldValue.serverTimestamp(),
       'endLocation': {'lat': endLat, 'lng': endLng},
     });
+    if (!logAlert) return;
     try {
       final doc = await _firestore.collection('duties').doc(dutyId).get();
       final data = doc.data() ?? const <String, dynamic>{};

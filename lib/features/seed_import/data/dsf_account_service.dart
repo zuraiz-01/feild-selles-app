@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
@@ -10,7 +10,6 @@ class DsfAccount {
   final String tsaId;
   final String name;
   final String email;
-  final String password;
   final String uid;
   final String distributorId;
   final String? photoUrl;
@@ -22,7 +21,6 @@ class DsfAccount {
     required this.tsaId,
     required this.name,
     required this.email,
-    required this.password,
     required this.uid,
     required this.distributorId,
     this.photoUrl,
@@ -70,7 +68,6 @@ class DsfAccount {
       tsaId: (data['tsaId'] as String?) ?? doc.id,
       name: (data['name'] as String?) ?? '',
       email: (data['email'] as String?) ?? '',
-      password: (data['password'] as String?) ?? '',
       uid: (data['uid'] as String?) ?? '',
       distributorId: (data['distributorId'] as String?) ?? '',
       photoUrl: photoUrl,
@@ -92,6 +89,7 @@ class DsfAccountService {
   Stream<DsfAccount?> watchByTsaId(String tsaId) {
     return _col.doc(tsaId).snapshots().map((doc) {
       if (!doc.exists) return null;
+      unawaited(_scrubLegacyPassword(doc));
       return DsfAccount.fromDoc(doc);
     });
   }
@@ -99,20 +97,11 @@ class DsfAccountService {
   Future<DsfAccount?> getByTsaId(String tsaId) async {
     final doc = await _col.doc(tsaId).get();
     if (!doc.exists) return null;
+    await _scrubLegacyPassword(doc);
     return DsfAccount.fromDoc(doc);
   }
 
   String emailForTsa(String tsaId) => '$tsaId@field.local';
-
-  String generatePassword({int length = 12}) {
-    const alphabet =
-        'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#\$%&*?';
-    final rand = Random.secure();
-    return List.generate(
-      length,
-      (_) => alphabet[rand.nextInt(alphabet.length)],
-    ).join();
-  }
 
   Future<DsfAccount> createAccount({
     required String tsaId,
@@ -128,15 +117,18 @@ class DsfAccountService {
   }) async {
     final existing = await _col.doc(tsaId).get();
     if (existing.exists) {
+      await _scrubLegacyPassword(existing);
       return DsfAccount.fromDoc(existing);
+    }
+
+    final trimmedPassword = password?.trim() ?? '';
+    if (trimmedPassword.isEmpty) {
+      throw StateError('Password is required when creating a DSF account.');
     }
 
     final finalEmail = (email?.trim().isNotEmpty ?? false)
         ? email!.trim()
         : emailForTsa(tsaId);
-    final finalPassword = (password?.trim().isNotEmpty ?? false)
-        ? password!.trim()
-        : generatePassword();
     final finalDistributorId = distributorId.trim().isEmpty
         ? tsaId
         : distributorId.trim();
@@ -147,7 +139,7 @@ class DsfAccountService {
     );
     final signUpRes = await _postJson(signUpUri, {
       'email': finalEmail,
-      'password': finalPassword,
+      'password': trimmedPassword,
       'returnSecureToken': true,
     });
     final signUpBody = await _parseBody(signUpRes);
@@ -189,7 +181,6 @@ class DsfAccountService {
       'tsaId': tsaId,
       'name': name.trim(),
       'email': finalEmail,
-      'password': finalPassword,
       'uid': localId,
       'distributorId': finalDistributorId,
       if (cleanedPhotoUrl != null && cleanedPhotoUrl.isNotEmpty)
@@ -208,7 +199,6 @@ class DsfAccountService {
     required String tsaId,
     required String name,
     required String email,
-    required String password,
     required String distributorId,
     String? photoUrl,
     bool clearPhoto = false,
@@ -223,27 +213,18 @@ class DsfAccountService {
     }
     final current = DsfAccount.fromDoc(existing);
     final newEmail = email.trim();
-    final newPassword = password.trim();
     final newDistributorId = distributorId.trim().isEmpty
         ? tsaId
         : distributorId.trim();
     final cleanedPhotoUrl = photoUrl?.trim();
 
-    if (newEmail.isEmpty || newPassword.isEmpty) {
-      throw StateError('Email and password are required');
+    if (newEmail.isEmpty) {
+      throw StateError('Email is required');
     }
 
-    final needsAuthUpdate =
-        newEmail != current.email || newPassword != current.password;
-    if (needsAuthUpdate) {
-      final idToken = await _signInForToken(
-        email: current.email,
-        password: current.password,
-      );
-      await _updateAuthUser(
-        idToken: idToken,
-        email: newEmail,
-        password: newPassword,
+    if (newEmail != current.email) {
+      throw StateError(
+        'Email changes require a trusted backend or Firebase Console.',
       );
     }
 
@@ -259,7 +240,7 @@ class DsfAccountService {
     await _col.doc(tsaId).set({
       'name': name.trim(),
       'email': newEmail,
-      'password': newPassword,
+      'password': FieldValue.delete(),
       'distributorId': newDistributorId,
       if (clearPhoto)
         'photoUrl': FieldValue.delete()
@@ -279,15 +260,9 @@ class DsfAccountService {
     if (!existing.exists) {
       return;
     }
-    final current = DsfAccount.fromDoc(existing);
-    final idToken = await _signInForToken(
-      email: current.email,
-      password: current.password,
+    throw StateError(
+      'Deleting the Firebase Auth user now requires Firebase Console or a trusted admin function.',
     );
-    await _deleteAuthUser(idToken: idToken);
-
-    await _firestore.collection('users').doc(current.uid).delete();
-    await _col.doc(tsaId).delete();
   }
 
   Future<void> _writeUserProfile({
@@ -298,6 +273,18 @@ class DsfAccountService {
       'role': 'dsf',
       'distributorId': distributorId,
     }, SetOptions(merge: true));
+  }
+
+  Future<void> _scrubLegacyPassword(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    final data = doc.data();
+    if (data == null || !data.containsKey('password')) return;
+    try {
+      await doc.reference.update({'password': FieldValue.delete()});
+    } catch (_) {
+      // Best-effort cleanup only.
+    }
   }
 
   Future<void> _ensureDistributor({
@@ -333,63 +320,6 @@ class DsfAccountService {
         'radiusMeters': officeRadiusMeters,
       },
     });
-  }
-
-  Future<String> _signInForToken({
-    required String email,
-    required String password,
-  }) async {
-    final signInUri = Uri.parse(
-      'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${DefaultFirebaseOptions.web.apiKey}',
-    );
-    final signInRes = await _postJson(signInUri, {
-      'email': email.trim(),
-      'password': password,
-      'returnSecureToken': true,
-    });
-    final signInBody = await _parseBody(signInRes);
-    if (signInRes.statusCode < 200 || signInRes.statusCode >= 300) {
-      final err = signInBody['error'];
-      throw StateError('REST signIn failed: ${err ?? signInBody}');
-    }
-    final token = signInBody['idToken'];
-    if (token is! String) {
-      throw StateError('REST signIn missing idToken');
-    }
-    return token;
-  }
-
-  Future<void> _updateAuthUser({
-    required String idToken,
-    required String email,
-    required String password,
-  }) async {
-    final updateUri = Uri.parse(
-      'https://identitytoolkit.googleapis.com/v1/accounts:update?key=${DefaultFirebaseOptions.web.apiKey}',
-    );
-    final updateRes = await _postJson(updateUri, {
-      'idToken': idToken,
-      'email': email,
-      'password': password,
-      'returnSecureToken': true,
-    });
-    final updateBody = await _parseBody(updateRes);
-    if (updateRes.statusCode < 200 || updateRes.statusCode >= 300) {
-      final err = updateBody['error'];
-      throw StateError('REST update failed: ${err ?? updateBody}');
-    }
-  }
-
-  Future<void> _deleteAuthUser({required String idToken}) async {
-    final deleteUri = Uri.parse(
-      'https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${DefaultFirebaseOptions.web.apiKey}',
-    );
-    final deleteRes = await _postJson(deleteUri, {'idToken': idToken});
-    if (deleteRes.statusCode < 200 || deleteRes.statusCode >= 300) {
-      final body = await _parseBody(deleteRes);
-      final err = body['error'];
-      throw StateError('REST delete failed: ${err ?? body}');
-    }
   }
 
   Future<http.Response> _postJson(Uri uri, Map<String, dynamic> body) {

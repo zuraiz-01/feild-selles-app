@@ -63,10 +63,34 @@ class StartDutyUseCase {
     );
 
     final dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
-    await _session.setActiveDutyId(dutyId);
-    await _session.setActiveDutyDateKey(dateKey);
+    var trackingStarted = false;
+    try {
+      await _tracking.start(dutyId: dutyId);
+      trackingStarted = true;
 
-    await _tracking.start(dutyId: dutyId);
-    return StartDutyResult(dutyId: dutyId, dateKey: dateKey);
+      await _session.setActiveDutyId(dutyId);
+      await _session.setActiveDutyDateKey(dateKey);
+
+      return StartDutyResult(dutyId: dutyId, dateKey: dateKey);
+    } catch (_) {
+      if (trackingStarted) {
+        try {
+          await _tracking.stop(dutyId: dutyId);
+        } catch (_) {}
+      }
+      try {
+        await _dutyRepository.endDuty(
+          dutyId: dutyId,
+          endLat: pos.latitude,
+          endLng: pos.longitude,
+          logAlert: false,
+        );
+      } catch (_) {}
+      try {
+        await _session.setActiveDutyId(null);
+        await _session.setActiveDutyDateKey(null);
+      } catch (_) {}
+      rethrow;
+    }
   }
 }

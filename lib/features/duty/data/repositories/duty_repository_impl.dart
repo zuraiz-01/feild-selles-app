@@ -30,8 +30,14 @@ class DutyRepositoryImpl implements DutyRepository {
     required String dutyId,
     required double endLat,
     required double endLng,
+    bool logAlert = true,
   }) {
-    return _remote.endDuty(dutyId: dutyId, endLat: endLat, endLng: endLng);
+    return _remote.endDuty(
+      dutyId: dutyId,
+      endLat: endLat,
+      endLng: endLng,
+      logAlert: logAlert,
+    );
   }
 
   @override
